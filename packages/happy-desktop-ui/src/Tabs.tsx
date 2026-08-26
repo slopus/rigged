@@ -34,6 +34,10 @@ export type TabItem = {
     badge?: number;
     /** False keeps a permanent tab visible when sibling tabs can be closed. */
     closable?: boolean;
+    /** Keeps a fixed tab visible but unavailable, and states why in its tooltip. */
+    disabledReason?: string;
+    /** Shows only the leading icon while keeping `label` as the accessible name. */
+    iconOnly?: boolean;
     /** An italic, replaceable document preview rather than a permanent tab. */
     preview?: boolean;
     /**
@@ -420,6 +424,7 @@ export function Tabs(props: TabsProps) {
     const targets = (): readonly TabTransferTarget[] => local.transferTargets ?? [];
     /** Whether this tab is one the owner lets leave the strip. */
     const movable = (tab: TabItem): boolean =>
+        tab.disabledReason === undefined &&
         targets().length > 0 &&
         local.onTransfer !== undefined &&
         (local.transferable?.(tab) ?? true);
@@ -488,6 +493,7 @@ export function Tabs(props: TabsProps) {
 
     const dragStart = (event: ReactPointerEvent<HTMLButtonElement>, index: number): void => {
         dragClick.current = false;
+        if (local.tabs[index]?.disabledReason !== undefined) return;
         // A strip whose tabs can only be moved to the other side of the window
         // is still a strip whose tabs are dragged: rearranging and moving out
         // are the same gesture, and either one alone is enough to start it.
@@ -623,12 +629,15 @@ export function Tabs(props: TabsProps) {
                 const shift = () => (drag?.moved ? tabShift(drag, index) : 0);
                 return (
                     <button
+                        aria-disabled={tab.disabledReason === undefined ? undefined : true}
+                        aria-label={tab.iconOnly ? tab.label : undefined}
                         aria-selected={active() ? "true" : "false"}
                         key={tab.id}
                         className="happy-tabs__tab"
                         data-active={active() ? "" : undefined}
                         data-carried={dragged() && drag?.carried ? "" : undefined}
                         data-dragged={dragged() ? "" : undefined}
+                        data-disabled={tab.disabledReason === undefined ? undefined : ""}
                         data-happy-desktop-ui="tab"
                         data-preview={tab.preview ? "" : undefined}
                         data-reorderable={local.onReorder || movable(tab) ? "" : undefined}
@@ -638,10 +647,15 @@ export function Tabs(props: TabsProps) {
                                 dragClick.current = false;
                                 return;
                             }
+                            if (tab.disabledReason !== undefined) return;
                             local.onSelect(tab.id);
                         }}
-                        onContextMenu={(event) => openTabMenu(tab, event)}
-                        onDoubleClick={() => local.onDoubleClick?.(tab.id)}
+                        onContextMenu={(event) => {
+                            if (tab.disabledReason === undefined) openTabMenu(tab, event);
+                        }}
+                        onDoubleClick={() => {
+                            if (tab.disabledReason === undefined) local.onDoubleClick?.(tab.id);
+                        }}
                         onKeyDown={(event) => moveByKey(event, tab)}
                         onPointerCancel={dragEnd}
                         onPointerDown={(event) => dragStart(event, index)}
@@ -655,25 +669,31 @@ export function Tabs(props: TabsProps) {
                                   ? { transform: `translateX(${shift()}px)` }
                                   : undefined
                         }
+                        title={tab.disabledReason ?? (tab.iconOnly ? tab.label : undefined)}
                         type="button"
                     >
                         {tabLeadingMark(tab, iconSizes[size()])}
-                        <span className="happy-tabs__tab-label" data-happy-desktop-ui="tab-label">
-                            {/* The tab's own colour, with a pale band wiping
-                                through it. Busy is a passing state, so it may
-                                not restyle the title: the active tab is already
-                                the darkest one in the strip, and painting its
-                                title again here would stack a second emphasis
-                                on top of one the tab had already earned. Only
-                                the travelling band is new. */}
-                            {tab.busy && tab.labelShimmer !== false ? (
-                                <ShimmerText sweep="sheen" tone="inherit">
-                                    {tab.label}
-                                </ShimmerText>
-                            ) : (
-                                tab.label
-                            )}
-                        </span>
+                        {tab.iconOnly ? null : (
+                            <span
+                                className="happy-tabs__tab-label"
+                                data-happy-desktop-ui="tab-label"
+                            >
+                                {/* The tab's own colour, with a pale band wiping
+                                    through it. Busy is a passing state, so it may
+                                    not restyle the title: the active tab is already
+                                    the darkest one in the strip, and painting its
+                                    title again here would stack a second emphasis
+                                    on top of one the tab had already earned. Only
+                                    the travelling band is new. */}
+                                {tab.busy && tab.labelShimmer !== false ? (
+                                    <ShimmerText sweep="sheen" tone="inherit">
+                                        {tab.label}
+                                    </ShimmerText>
+                                ) : (
+                                    tab.label
+                                )}
+                            </span>
+                        )}
                         {tab.badge !== undefined ? (
                             <CountBadge
                                 className="happy-tabs__tab-badge"
@@ -736,7 +756,9 @@ export function Tabs(props: TabsProps) {
                                     ) : null}
                                 </span>
                             ) : null)(
-                            local.onClose !== undefined && tab.closable !== false,
+                            local.onClose !== undefined &&
+                                tab.closable !== false &&
+                                tab.disabledReason === undefined,
                             tabActivityMark(tab),
                         )}
                         {active() ? (

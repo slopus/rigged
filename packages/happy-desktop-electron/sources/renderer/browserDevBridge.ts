@@ -109,6 +109,8 @@ export function browserDevBridgeCreate(): HappyDesktopBridge {
         // the window's own stack listens for directly. Nothing has to be relayed
         // through here, so the subscription is a well-behaved no-op.
         navigationStepSubscribe: () => () => undefined,
+        // Edit → Undo belongs to the browser itself in this development mode.
+        editUndoSubscribe: () => () => undefined,
         // A browser tab has no Dock icon to mark, so the count goes nowhere
         // rather than the window branching on where it is running.
         dockUnreadSet: () => undefined,

@@ -8,6 +8,7 @@ import {
     screen,
     session as electronSession,
     shell,
+    webContents,
     type BrowserWindowConstructorOptions,
     type MenuItemConstructorOptions,
     type OpenDialogOptions,
@@ -44,6 +45,7 @@ import {
     type DesktopBrowserStatus,
     type DesktopCloudAuthConfiguration,
     type DesktopDebugSnapshot,
+    type DesktopEditUndoRequest,
     type DesktopGuestKeyEvent,
     type DesktopMediaPreview,
     type DesktopNavigationStep,
@@ -1256,6 +1258,50 @@ function applicationMenuInstall(snapshot: ReturnType<DesktopRuntime["get"]>): vo
             direction,
         } satisfies DesktopNavigationStep);
     };
+    const editUndoSend = (): void => {
+        const focused = BrowserWindow.getFocusedWindow();
+        if (!focused || focused.webContents.isDestroyed()) return;
+        const presenting = windowLifecycle.get();
+        if (focused === presenting) {
+            focused.webContents.send(desktopIpc.editUndoRequested, {
+                ctrlKey: process.platform !== "darwin",
+                metaKey: process.platform === "darwin",
+            } satisfies DesktopEditUndoRequest);
+            return;
+        }
+        // Auxiliary windows do not host application close history. Preserve
+        // the native Edit → Undo behavior they had before this command became
+        // application-aware in the presenting window.
+        const contents = webContents.getFocusedWebContents();
+        const target =
+            contents === focused.webContents || contents?.hostWebContents === focused.webContents
+                ? contents
+                : focused.webContents;
+        if (!target.isDestroyed()) target.undo();
+    };
+    const editMenu: MenuItemConstructorOptions = {
+        label: "Edit",
+        submenu: [
+            {
+                label: "Undo",
+                accelerator: "CmdOrCtrl+Z",
+                click: editUndoSend,
+            },
+            { role: "redo" },
+            { type: "separator" },
+            { role: "cut" },
+            { role: "copy" },
+            { role: "paste" },
+            { role: "pasteAndMatchStyle" },
+            { role: "delete" },
+            { role: "selectAll" },
+            { type: "separator" },
+            {
+                label: "Speech",
+                submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }],
+            },
+        ],
+    };
     const template: MenuItemConstructorOptions[] = [
         {
             // macOS reads the bold first menu from this label. Left to the
@@ -1278,7 +1324,7 @@ function applicationMenuInstall(snapshot: ReturnType<DesktopRuntime["get"]>): vo
         ...(desktopFlavor.kind === "local-web"
             ? []
             : [{ label: "Instances", submenu: instances } as MenuItemConstructorOptions]),
-        { role: "editMenu" },
+        editMenu,
         viewMenu,
         {
             // The two items every browser puts here, on the same keys. They
@@ -1598,6 +1644,17 @@ void app
             if (!presenting || presenting.webContents !== event.sender) return;
             const count = dockUnreadCountRead(raw);
             if (count !== undefined) dockBadgeApply(count);
+        });
+        ipcMain.on(desktopIpc.editUndoNative, (event) => {
+            const presenting = windowLifecycle.get();
+            if (!presenting || presenting.webContents !== event.sender) return;
+            const focused = webContents.getFocusedWebContents();
+            const target =
+                focused === presenting.webContents ||
+                focused?.hostWebContents === presenting.webContents
+                    ? focused
+                    : presenting.webContents;
+            if (!target.isDestroyed()) target.undo();
         });
         ipcMain.handle(desktopIpc.mediaPreviewOpen, (event, raw: unknown) => {
             // Only the window this shell is presenting opens a preview window, so

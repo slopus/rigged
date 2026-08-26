@@ -51,6 +51,7 @@ import {
 import {
     mediaPreviewView,
     type DesktopConfig,
+    type DesktopEditUndoRequest,
     type DesktopGuestKeyEvent,
     type DesktopRuntimeSnapshot,
     type DesktopUpdateSnapshot,
@@ -862,8 +863,10 @@ if (mediaPreviewBridge) {
     );
 } else if (bridge) {
     const desktopBridge = bridge;
+    const focusedKeyboardTarget = (): HTMLElement | Window =>
+        document.activeElement instanceof HTMLElement ? document.activeElement : window;
     const guestKeyUnsubscribe = desktopBridge.guestKeySubscribe((input: DesktopGuestKeyEvent) => {
-        window.dispatchEvent(
+        focusedKeyboardTarget().dispatchEvent(
             new KeyboardEvent(input.type, {
                 altKey: input.altKey,
                 bubbles: true,
@@ -879,7 +882,21 @@ if (mediaPreviewBridge) {
             }),
         );
     });
+    const editUndoUnsubscribe =
+        desktopBridge.editUndoSubscribe?.((request: DesktopEditUndoRequest) => {
+            const event = new KeyboardEvent("keydown", {
+                bubbles: true,
+                cancelable: true,
+                code: "KeyZ",
+                ctrlKey: request.ctrlKey,
+                key: "z",
+                metaKey: request.metaKey,
+            });
+            focusedKeyboardTarget().dispatchEvent(event);
+            return event.defaultPrevented;
+        }) ?? (() => undefined);
     window.addEventListener("unload", guestKeyUnsubscribe, { once: true });
+    window.addEventListener("unload", editUndoUnsubscribe, { once: true });
     /**
      * The two stores that outlive the app itself.
      *

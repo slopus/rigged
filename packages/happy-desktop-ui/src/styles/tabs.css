@@ -46,6 +46,15 @@
     color: var(--text);
 }
 
+.happy-tabs__tab[data-disabled] {
+    cursor: not-allowed;
+    opacity: 0.48;
+}
+
+.happy-tabs__tab[data-disabled]:hover:not([data-active]) {
+    color: var(--text-secondary);
+}
+
 .happy-tabs__tab[data-active] {
     color: var(--text);
 }

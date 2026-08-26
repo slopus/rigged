@@ -9,6 +9,7 @@ import {
     type DesktopBuildIdentity,
     type DesktopDebugSnapshot,
     type DesktopDaemonSnapshot,
+    type DesktopEditUndoRequest,
     type DesktopGuestKeyEvent,
     type DesktopMediaPreview,
     type DesktopRuntimeSnapshot,
@@ -93,6 +94,20 @@ const bridge: HappyDesktopBridge = {
             listener(step);
         ipcRenderer.on(desktopIpc.navigationStep, receive);
         return () => ipcRenderer.removeListener(desktopIpc.navigationStep, receive);
+    },
+    editUndoSubscribe(listener: (request: DesktopEditUndoRequest) => boolean) {
+        const receive = (_event: Electron.IpcRendererEvent, request: DesktopEditUndoRequest) => {
+            let handled = false;
+            try {
+                handled = listener(request);
+            } catch {
+                // A renderer that failed to answer has not claimed the command;
+                // the native editor remains the safe owner of Undo.
+            }
+            if (!handled) ipcRenderer.send(desktopIpc.editUndoNative);
+        };
+        ipcRenderer.on(desktopIpc.editUndoRequested, receive);
+        return () => ipcRenderer.removeListener(desktopIpc.editUndoRequested, receive);
     },
     // `send`, not `invoke`: the shell has nothing to answer, and a badge that
     // made the window await the operating system would be a worse badge.

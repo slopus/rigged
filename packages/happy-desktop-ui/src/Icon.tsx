@@ -22,6 +22,7 @@ export type IconName =
     | "chevron-down"
     | "chevron-right"
     | "close"
+    | "diff"
     | "branch"
     | "merge"
     | "spark"
@@ -134,6 +135,9 @@ const glyphs: Record<IconName, IconGlyph> = {
     // wrong where it is not. In a danger or warning tone beside a failure it is
     // the house mark for trouble; `shield` says the opposite and is never it.
     close: { set: "ionicons", name: "close-outline" },
+    // Octicons' compact plus/minus mark: the same code/diff family Happy uses
+    // for repository affordances, and the tab-sized statement of a change set.
+    diff: { set: "octicons", name: "diff" },
     branch: { set: "octicons", name: "git-branch" },
     merge: { set: "octicons", name: "git-merge" },
     spark: { set: "ionicons", name: "sparkles-outline" },

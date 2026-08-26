@@ -3,7 +3,6 @@ import { type CSSProperties } from "react";
 import { FileTree, type FileTreeNode, type FileTreeProps } from "./FileTree";
 import { compactCount, changeCountLabel } from "./countText";
 import { Icon } from "./Icon";
-import { SegmentedControl } from "./SegmentedControl";
 /** Which files the listing is about: only what changed, or the whole checkout. */
 export type FileBrowserScope = "changed" | "all";
 /** Whether the listing nests into directories or reads as one flat run of files. */
@@ -13,9 +12,6 @@ export type FileBrowserProps = {
     "data-testid"?: string;
     style?: CSSProperties;
     scope: FileBrowserScope;
-    onScopeChange?: (scope: FileBrowserScope) => void;
-    /** Per-scope refusal; a cached scope remains available while an uncached one can be disabled. */
-    scopeUnavailable?: Partial<Readonly<Record<FileBrowserScope, string>>>;
     layout: FileBrowserLayout;
     onLayoutChange?: (layout: FileBrowserLayout) => void;
     /** Rows to list. Passed straight through to FileTree. */
@@ -40,16 +36,13 @@ export type FileBrowserProps = {
     /** Why file rows cannot open or select remote content; directory disclosure stays local. */
     fileActionsUnavailable?: string;
 };
-const SCOPES: { value: FileBrowserScope; label: string }[] = [
-    { value: "all", label: "All Files" },
-    { value: "changed", label: "Changes" },
-];
 /**
  * C-168 FileBrowser — the file listing of a workspace panel.
  *
- * One 32px control row and a scrolling `FileTree` beneath it. The row carries
- * the one-layer All Files / Changes choice. Changes adds diff totals and the
- * flat List / Tree choice; All Files is always a lazy tree.
+ * A scrolling `FileTree` beneath the facts and List / Tree choice for Changes.
+ * Scope belongs to the panel's tabs, so this component draws exactly the
+ * listing named by its active tab. All Files is always a lazy tree and needs no
+ * second control row under the Files tab.
  *
  * Every exclusive control in the row is one layer: no enclosing track, and
  * only the selected option carries the shared selection fill and outline. No
@@ -66,8 +59,6 @@ export function FileBrowser(props: FileBrowserProps) {
         "data-testid",
         "style",
         "scope",
-        "onScopeChange",
-        "scopeUnavailable",
         "layout",
         "onLayoutChange",
         "nodes",
@@ -97,86 +88,68 @@ export function FileBrowser(props: FileBrowserProps) {
             data-testid={local["data-testid"]}
             style={local.style}
         >
-            <div
-                className="happy-file-browser__controls"
-                data-happy-desktop-ui="file-browser-controls"
-            >
-                <SegmentedControl
-                    aria-label="Files shown"
-                    className="happy-file-browser__scopes"
-                    onChange={(scope) => local.onScopeChange?.(scope as FileBrowserScope)}
-                    segments={SCOPES.map((scope) => ({
-                        ...scope,
-                        ...(local.scopeUnavailable?.[scope.value] === undefined
-                            ? {}
-                            : {
-                                  disabled: true,
-                                  title: local.scopeUnavailable[scope.value],
-                              }),
-                    }))}
-                    size="compact"
-                    value={local.scope}
-                />
-                {local.scope === "changed" ? (
-                    <>
-                        <span
-                            className="happy-file-browser__summary"
-                            data-happy-desktop-ui="file-browser-summary"
-                        >
-                            <span className="happy-file-browser__count">
-                                {`${compactCount(local.count)} ${local.count === 1 ? "file" : "files"}`}
-                            </span>
-                            {added || deleted ? (
-                                <span className="happy-file-browser__lines">
-                                    {added ? (
-                                        <span
-                                            aria-hidden="true"
-                                            className="happy-file-browser__added"
-                                        >{`+${compactCount(local.addedLines ?? 0)}`}</span>
-                                    ) : null}
-                                    {deleted ? (
-                                        <span
-                                            aria-hidden="true"
-                                            className="happy-file-browser__deleted"
-                                        >{`−${compactCount(local.deletedLines ?? 0)}`}</span>
-                                    ) : null}
-                                    {/* Out of flow, so the pair keeps the row's spacing. */}
-                                    <span className="happy-visually-hidden">
-                                        {changeCountLabel(
-                                            local.addedLines ?? 0,
-                                            local.deletedLines ?? 0,
-                                        )}
-                                    </span>
-                                </span>
-                            ) : null}
+            {local.scope === "changed" ? (
+                <div
+                    className="happy-file-browser__controls"
+                    data-happy-desktop-ui="file-browser-controls"
+                >
+                    <span
+                        className="happy-file-browser__summary"
+                        data-happy-desktop-ui="file-browser-summary"
+                    >
+                        <span className="happy-file-browser__count">
+                            {`${compactCount(local.count)} ${local.count === 1 ? "file" : "files"}`}
                         </span>
-                        <div className="happy-file-browser__layouts" role="group">
-                            <button
-                                aria-label="List files"
-                                aria-pressed={local.layout === "flat"}
-                                className="happy-file-browser__layout"
-                                data-active={local.layout === "flat" ? "" : undefined}
-                                data-happy-desktop-ui="file-browser-layout"
-                                onClick={() => local.onLayoutChange?.("flat")}
-                                type="button"
-                            >
-                                <Icon name="files" size={14} />
-                            </button>
-                            <button
-                                aria-label="Nest files into directories"
-                                aria-pressed={local.layout === "tree"}
-                                className="happy-file-browser__layout"
-                                data-active={local.layout === "tree" ? "" : undefined}
-                                data-happy-desktop-ui="file-browser-layout"
-                                onClick={() => local.onLayoutChange?.("tree")}
-                                type="button"
-                            >
-                                <Icon name="branch" size={14} />
-                            </button>
-                        </div>
-                    </>
-                ) : null}
-            </div>
+                        {added || deleted ? (
+                            <span className="happy-file-browser__lines">
+                                {added ? (
+                                    <span
+                                        aria-hidden="true"
+                                        className="happy-file-browser__added"
+                                    >{`+${compactCount(local.addedLines ?? 0)}`}</span>
+                                ) : null}
+                                {deleted ? (
+                                    <span
+                                        aria-hidden="true"
+                                        className="happy-file-browser__deleted"
+                                    >{`−${compactCount(local.deletedLines ?? 0)}`}</span>
+                                ) : null}
+                                {/* Out of flow, so the pair keeps the row's spacing. */}
+                                <span className="happy-visually-hidden">
+                                    {changeCountLabel(
+                                        local.addedLines ?? 0,
+                                        local.deletedLines ?? 0,
+                                    )}
+                                </span>
+                            </span>
+                        ) : null}
+                    </span>
+                    <div className="happy-file-browser__layouts" role="group">
+                        <button
+                            aria-label="List files"
+                            aria-pressed={local.layout === "flat"}
+                            className="happy-file-browser__layout"
+                            data-active={local.layout === "flat" ? "" : undefined}
+                            data-happy-desktop-ui="file-browser-layout"
+                            onClick={() => local.onLayoutChange?.("flat")}
+                            type="button"
+                        >
+                            <Icon name="files" size={14} />
+                        </button>
+                        <button
+                            aria-label="Nest files into directories"
+                            aria-pressed={local.layout === "tree"}
+                            className="happy-file-browser__layout"
+                            data-active={local.layout === "tree" ? "" : undefined}
+                            data-happy-desktop-ui="file-browser-layout"
+                            onClick={() => local.onLayoutChange?.("tree")}
+                            type="button"
+                        >
+                            <Icon name="branch" size={14} />
+                        </button>
+                    </div>
+                </div>
+            ) : null}
             {local.note ? (
                 <div className="happy-file-browser__note" data-happy-desktop-ui="file-browser-note">
                     {local.note}

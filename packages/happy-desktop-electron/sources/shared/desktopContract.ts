@@ -587,6 +587,12 @@ export type DesktopNavigationStep = {
     readonly direction: "back" | "forward";
 };
 
+/** Primary-modifier state for Edit → Undo on the platform hosting this window. */
+export type DesktopEditUndoRequest = {
+    readonly ctrlKey: boolean;
+    readonly metaKey: boolean;
+};
+
 export type DesktopPreviewNavigation = DesktopPreviewNavigationStep & {
     readonly guestId: number;
     readonly navigationId: number;
@@ -642,6 +648,13 @@ export interface HappyDesktopBridge {
     previewNavigationSubscribe(listener: (step: DesktopPreviewNavigation) => void): () => void;
     /** Back and Forward, as asked for by the mouse, the trackpad, or the menu. */
     navigationStepSubscribe(listener: (step: DesktopNavigationStep) => void): () => void;
+    /**
+     * Lets the application claim the native Edit → Undo command for its own
+     * close history. Returning false preserves Chromium's native editor undo.
+     * Optional while cloud-delivered renderers can still meet an older desktop
+     * host that leaves Undo entirely native.
+     */
+    editUndoSubscribe?(listener: (request: DesktopEditUndoRequest) => boolean): () => void;
     /**
      * Reports how many conversations are waiting for the person, for the mark on
      * the Dock icon. One-way and fire-and-forget: the window states what it is
@@ -772,6 +785,10 @@ export const desktopIpc = {
     previewNavigationChanged: "happy:html-preview:navigation-changed",
     /** Main → renderer: the reader asked to go back or forward. */
     navigationStep: "happy:navigation:step",
+    /** Main → renderer: the native Edit menu asked the focused app to undo. */
+    editUndoRequested: "happy:edit:undo-requested",
+    /** Preload → main: no app command claimed Undo, so Chromium should handle it. */
+    editUndoNative: "happy:edit:undo-native",
     directoryPick: "happy:directory:pick",
     mediaPreviewChanged: "happy:media-preview:changed",
     mediaPreviewClose: "happy:media-preview:close",

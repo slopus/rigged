@@ -458,13 +458,38 @@ const APP_SHORTCUTS = {
     panelToggleAlternate: commandShortcut("b", { alt: true }),
     sessionCreate: commandShortcut("t"),
     tabClose: commandShortcut("w"),
+    tabCloseUndo: commandShortcut("z"),
     workspaceCreate: commandShortcut("n"),
 } as const;
 const PANEL_TOGGLE_HINT = {
     aria: `${APP_SHORTCUTS.panelToggle.aria} ${APP_SHORTCUTS.panelToggleAlternate.aria}`,
     caps: APP_SHORTCUTS.panelToggle.caps,
 } as const;
+const RECENT_SESSIONS_LABEL = "Show recent sessions";
+const PANEL_HIDE_LABEL = "Hide panel";
 const HISTORY_SESSION_PREFIX = "session:";
+const CLOSED_TAB_HISTORY_LIMIT = 100;
+
+type HappyAgentClosedTab =
+    | {
+          readonly type: "session";
+          readonly groupId: HappyAgentGroupId;
+          readonly sessionId: HappyAgentSessionId;
+      }
+    | {
+          readonly type: "sessionAddress";
+          readonly groupId: HappyAgentGroupId;
+          readonly sessionId: HappyAgentSessionId;
+      }
+    | {
+          readonly type: "file";
+          readonly fileKind: HappyAgentFileTabKind;
+          readonly groupId: HappyAgentGroupId;
+          readonly path: string;
+          readonly placement: "main" | "panel";
+          readonly preview: boolean;
+      }
+    | { readonly type: "panel" };
 
 /**
  * The rows one project contributes: the project itself, then a nested row per
@@ -1864,6 +1889,7 @@ interface HappyAgentWorkspaceSurfaceProps {
  */
 function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
     const workspaceFocusedPane = useRef<AppShellFocusedPane>("workspace");
+    const closedTabs = useRef<HappyAgentClosedTab[]>([]);
     // AppShell's panel callback ref treats this callback's identity as the
     // panel lifetime, so ordinary store renders must keep it stable.
     const workspaceFocusedPaneChange = useCallback((pane: AppShellFocusedPane): void => {
@@ -1891,6 +1917,81 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
     const availability = props.availability;
     const connectionRefusal = availability.refusal;
     const happyAgentOnline = props.happyAgentOnline;
+    const paneFocusSchedule = (pane: AppShellFocusedPane, groupId?: HappyAgentGroupId): void => {
+        workspaceFocusedPane.current = pane;
+        if (typeof window === "undefined") return;
+        window.requestAnimationFrame(() => {
+            if (groupId !== undefined && props.workspace.get().address.groupId !== groupId) return;
+            const shell = document.querySelector<HTMLElement>(
+                '[data-happy-desktop-ui="app-shell"][data-embedded]',
+            );
+            const region = shell?.querySelector<HTMLElement>(
+                pane === "panel"
+                    ? '[data-happy-desktop-ui="app-shell-panel"]'
+                    : '[data-happy-desktop-ui="app-shell-workspace"]',
+            );
+            const selectedTab = region?.querySelector<HTMLElement>(
+                '[data-happy-desktop-ui="tab"][aria-selected="true"]',
+            );
+            // An empty workspace has no selected tab, and a just-opened panel
+            // can render its viewer one frame after its chrome. These stable
+            // controls complete the pane handoff in either interim state.
+            const paneFallback =
+                pane === "workspace"
+                    ? region?.querySelector<HTMLElement>(`[aria-label="${RECENT_SESSIONS_LABEL}"]`)
+                    : region?.querySelector<HTMLElement>(`[aria-label="${PANEL_HIDE_LABEL}"]`);
+            (selectedTab ?? paneFallback)?.focus({ preventScroll: true });
+        });
+    };
+    const closedTabRemember = (tab: HappyAgentClosedTab): void => {
+        closedTabs.current.push(tab);
+        if (closedTabs.current.length > CLOSED_TAB_HISTORY_LIMIT) closedTabs.current.shift();
+    };
+    const closedTabUndoAvailable = (): boolean => {
+        const tab = closedTabs.current.at(-1);
+        return tab !== undefined && (tab.type !== "session" || happyAgentOnline());
+    };
+    const closedTabUndo = (): void => {
+        const tab = closedTabs.current.pop();
+        if (!tab) return;
+        if (tab.type === "panel") {
+            if (!props.workspace.panel.get().open) props.workspace.panel.panelToggle();
+            paneFocusSchedule("panel");
+            return;
+        }
+        if (tab.type === "file") {
+            if (tab.placement === "panel") {
+                props.workspace.filePanelOpen(tab.groupId, tab.path, tab.fileKind);
+                paneFocusSchedule("panel", tab.groupId);
+                return;
+            }
+            const current = props.workspace.get().address;
+            // Route application opens a preview. Seed a permanent tab first
+            // when that is what was closed; the preview application then finds
+            // the same tab and deliberately cannot demote it.
+            if (!tab.preview) props.workspace.fileOpen(tab.groupId, tab.path, tab.fileKind);
+            props.onFileSelect(
+                tab.groupId,
+                current.groupId === tab.groupId ? current.conversationId : undefined,
+                tab.path,
+                tab.fileKind,
+            );
+            paneFocusSchedule("workspace", tab.groupId);
+            return;
+        }
+        if (tab.type === "sessionAddress") {
+            props.onChatSelect(tab.groupId, tab.sessionId);
+            paneFocusSchedule("workspace", tab.groupId);
+            return;
+        }
+        void props.workspace
+            .conversationRestore(tab.sessionId)
+            .then(() => {
+                props.onChatSelect(tab.groupId, tab.sessionId);
+                paneFocusSchedule("workspace", tab.groupId);
+            })
+            .catch(() => closedTabRemember(tab));
+    };
     const terminalHappyAgentAvailability = availability.online
         ? undefined
         : availability.state === "reconnecting"
@@ -1949,7 +2050,6 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
     // on a directory that is not there yet is withheld for the same reason —
     // there is nothing behind them to act on until the checkout arrives.
     const openGroupPreparing = openGroupPhase === "creating";
-    const panelCloseTarget = openGroupPreparing ? undefined : panelCloseTargetFind(panel);
     // The address the reader was sent to when a creation was accepted locally
     // and then refused. There is no row at it any more — happy-agent-connect withdrew
     // the one it had predicted — so the address answers for itself here rather
@@ -2140,6 +2240,9 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
                 (online && sessionIds.has(tabId as HappyAgentSessionId)),
         );
         const targets = new Set(closeableIds);
+        const selectedMainViewId = current.activeMainViewId ?? current.address.conversationId;
+        const selectedMainViewClosed =
+            selectedMainViewId !== undefined && targets.has(selectedMainViewId);
         const rest = currentGroup.conversations.filter((summary) => !targets.has(summary.id));
         const selectedSessionIndex = current.address.conversationId
             ? currentGroup.conversations.findIndex(
@@ -2161,7 +2264,17 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
         for (const tabId of closeableIds) {
             if (fileIds.has(tabId)) {
                 const file = current.fileTabs.find((tab) => tab.id === tabId);
-                if (file) props.onFileClose(file.groupId, file.path);
+                if (file) {
+                    closedTabRemember({
+                        type: "file",
+                        fileKind: file.kind,
+                        groupId: file.groupId,
+                        path: file.path,
+                        placement: "main",
+                        preview: file.preview,
+                    });
+                    props.onFileClose(file.groupId, file.path);
+                }
                 props.workspace.fileClose(tabId);
                 continue;
             }
@@ -2169,9 +2282,18 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
             // not copied, so this is the only tab it has and closing it ends
             // the shell or the page rather than sending it back.
             if (toolIds.has(tabId)) {
+                // A closed terminal has ended and cannot truthfully be
+                // reconstructed. It is a new close boundary, so Cmd-Z must not
+                // reach past it and revive an unrelated older tab.
+                closedTabs.current.length = 0;
                 props.workspace.panel.tabClose(tabId as HappyAgentPanelTabId);
                 continue;
             }
+            closedTabRemember({
+                type: "session",
+                groupId: currentGroup.id,
+                sessionId: tabId as HappyAgentSessionId,
+            });
             const repaired = props.onChatClose(currentGroup.id, tabId, fallbackSessionId);
             if (tabId === current.address.conversationId) selectedHistoryRepaired = repaired;
             void props.workspace
@@ -2188,22 +2310,62 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
             !selectedHistoryRepaired
         )
             props.onChatSelect(currentGroup.id, fallbackSessionId, true);
+        if (selectedMainViewClosed) paneFocusSchedule("workspace", currentGroup.id);
     };
     const groupTabClose = (tabId: string) => {
         // A detached subagent's tab is an address, not a member of the list:
         // closing it only steps back to the sessions that are listed.
         if (tabId === detachedConversationId) {
+            if (openGroup) {
+                closedTabRemember({
+                    type: "sessionAddress",
+                    groupId: openGroup.id,
+                    sessionId: tabId as HappyAgentSessionId,
+                });
+                paneFocusSchedule("workspace", openGroup.id);
+            }
             props.onChatSelect(openGroup?.id, openGroup?.conversations[0]?.id, true);
             return;
         }
         groupTabsClose([tabId]);
     };
     const panelViewClose = (viewId: string) => {
+        if (viewId === "changes" || viewId === "files") {
+            // Both file scopes are permanent sections. Closing either one
+            // closes their pane, so the tab is waiting in the same scope when
+            // the pane is opened again rather than disappearing forever.
+            closedTabRemember({ type: "panel" });
+            props.workspace.panel.panelToggle();
+            paneFocusSchedule("workspace", openGroup?.id);
+            return;
+        }
+        if (viewId === "file") {
+            const file = props.workspace.get().panelFile;
+            if (file)
+                closedTabRemember({
+                    type: "file",
+                    fileKind: file.kind,
+                    groupId: file.groupId,
+                    path: file.path,
+                    placement: "panel",
+                    preview: false,
+                });
+            props.workspace.filePanelClose();
+            paneFocusSchedule("panel", file?.groupId ?? openGroup?.id);
+            return;
+        }
+        // These transient views can be selected again, so dismissing one does
+        // not erase recoverable file/session history. A live terminal or
+        // browser, by contrast, ends at its close below and cannot be reopened
+        // truthfully; that irreversible close is a new history boundary.
         if (viewId === "activity") props.workspace.activityPanelClose();
         else if (viewId === "usage") props.workspace.usagePanelClose();
         else if (viewId === "preview") props.workspace.panel.previewClose();
-        else if (viewId === "file") props.workspace.filePanelClose();
-        else props.workspace.panel.tabClose(viewId as HappyAgentPanelTabId);
+        else {
+            closedTabs.current.length = 0;
+            props.workspace.panel.tabClose(viewId as HappyAgentPanelTabId);
+        }
+        paneFocusSchedule("panel", openGroup?.id);
     };
     const activeTabClose = () => {
         const panelNow = props.workspace.panel.get();
@@ -2211,17 +2373,9 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
         if (workspaceFocusedPane.current === "panel" && panelNow.open && !openGroupPreparing) {
             if (panelTarget) panelViewClose(panelTarget);
             else {
-                // Files is permanent. Closing from that focused tab dismisses
-                // its pane and returns the keyboard to the selected main tab.
-                const shell = document.querySelector<HTMLElement>(
-                    '[data-happy-desktop-ui="app-shell"][data-embedded]',
-                );
-                const mainTab = shell?.querySelector<HTMLElement>(
-                    '[data-happy-desktop-ui="app-shell-workspace"] [data-happy-desktop-ui="tab"][aria-selected="true"]',
-                );
-                mainTab?.focus();
-                workspaceFocusedPane.current = "workspace";
-                props.workspace.panel.panelToggle();
+                // The active file scope is permanent. Its close command still
+                // dismisses the pane and returns the keyboard to the main tab.
+                panelViewClose(panelNow.activeViewId === "files" ? "files" : "changes");
             }
             return;
         }
@@ -2301,7 +2455,12 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
                     if (!happyAgentOnline() || !openGroup.create) return;
                     const target = workspacePathRelative(path, openGroup.create.cwd);
                     props.workspace.filePanelOpen(openGroup.id, target, fileTabKind(target));
+                    // Opening something into the other pane is a focus handoff,
+                    // not only a state change. Without it the viewer is visibly
+                    // selected while Cmd-W still belongs to the transcript.
+                    paneFocusSchedule("panel", openGroup.id);
                 }}
+                onPanelFocus={() => paneFocusSchedule("panel", openGroup.id)}
                 canAbort={conversationCanAbort}
                 readOnly={conversationReadOnly}
                 happyAgentOnline={happyAgentOnline}
@@ -2338,7 +2497,7 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
                 // own — the reader's choice to have it open is untouched here.
                 panel.open && !openGroupPreparing ? (
                     <HappyAgentPanelBody
-                        {...(panelCloseTarget ? { closeShortcut: APP_SHORTCUTS.tabClose } : {})}
+                        closeShortcut={APP_SHORTCUTS.tabClose}
                         activity={conversation.type === "ready" ? conversation.value : undefined}
                         canStartTerminal={availability.online && props.chatId !== undefined}
                         browserContent={props.browserContent}
@@ -2571,6 +2730,12 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
                             // do when Files or an offline session is the only
                             // current target.
                             { run: activeTabClose, shortcut: APP_SHORTCUTS.tabClose },
+                            {
+                                enabled: closedTabUndoAvailable,
+                                preserveTextEditing: true,
+                                run: closedTabUndo,
+                                shortcut: APP_SHORTCUTS.tabCloseUndo,
+                            },
                             ...(openGroupPreparing
                                 ? []
                                 : [
@@ -2688,7 +2853,7 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
                                     icon="history"
                                     iconSize={12}
                                     items={historyMenuItems}
-                                    label="Show recent sessions"
+                                    label={RECENT_SESSIONS_LABEL}
                                     menuMaxHeight={420}
                                     menuLabel="Recent sessions"
                                     menuPageSize={100}
@@ -3413,6 +3578,8 @@ function HappyAgentConversationBody(props: {
     onCreate?: () => void;
     onChatSelect: HappyAgentWorkspaceSurfaceProps["onChatSelect"];
     onFileOpen: (path: string) => void;
+    /** Completes a main-to-panel selection by handing keyboard ownership to the panel. */
+    onPanelFocus: () => void;
     readOnly: boolean;
     /** Reads current transport health when a Happy Agent-backed action is invoked. */
     happyAgentOnline: () => boolean;
@@ -3446,6 +3613,7 @@ function HappyAgentConversationBody(props: {
                 now={props.now}
                 onChatSelect={props.onChatSelect}
                 onFileOpen={props.onFileOpen}
+                onPanelFocus={props.onPanelFocus}
                 canAbort={props.canAbort}
                 readOnly={props.readOnly}
                 happyAgentOnline={props.happyAgentOnline}
@@ -3588,6 +3756,8 @@ function HappyAgentConversationSurface(props: {
     onChatSelect: HappyAgentWorkspaceSurfaceProps["onChatSelect"];
     /** Opens a file the transcript names, in the panel beside it. */
     onFileOpen: (path: string) => void;
+    /** Completes a main-to-panel selection by handing keyboard ownership to the panel. */
+    onPanelFocus: () => void;
     readOnly: boolean;
     /** Reads current transport health when a Happy Agent-backed action is invoked. */
     happyAgentOnline: () => boolean;
@@ -3663,7 +3833,10 @@ function HappyAgentConversationSurface(props: {
                     <HappyAgentActivityControl
                         agents={activeActivity.agents}
                         backgroundTerminals={activeActivity.terminals}
-                        onClick={() => workspace.activityPanelOpen()}
+                        onClick={() => {
+                            workspace.activityPanelOpen();
+                            props.onPanelFocus();
+                        }}
                     />
                 ) : undefined
             }
@@ -3826,7 +3999,10 @@ function HappyAgentConversationSurface(props: {
                 }
                 if (attachment.openUrl) openExternalLink(attachment.openUrl);
             }}
-            onToolSelect={(entryId) => workspace.panel.previewOpen(entryId)}
+            onToolSelect={(entryId) => {
+                workspace.panel.previewOpen(entryId);
+                props.onPanelFocus();
+            }}
             onDelegationSelect={(sessionId) =>
                 props.onChatSelect(props.groupId, sessionId as HappyAgentSessionId)
             }
@@ -4429,8 +4605,22 @@ function HappyAgentPanelBody(props: {
             ? (props.happyAgentAvailabilityReason ??
               "Happy Agent must reconnect before loading all files.")
             : undefined;
+    const fileScopeActive = props.panel.activeViewId === "files";
     const baseTabs: TabItem[] = [
-        { closable: false, icon: "files", id: "files", label: "Files" },
+        {
+            closable: fileScopeActive && !all,
+            icon: "diff",
+            iconOnly: true,
+            id: "changes",
+            label: "Changes",
+        },
+        {
+            closable: fileScopeActive && all,
+            ...(allFilesUnavailable === undefined ? {} : { disabledReason: allFilesUnavailable }),
+            icon: "files",
+            id: "files",
+            label: "Files",
+        },
         ...(activityTabShown
             ? [{ closable: true, icon: "agents" as const, id: "activity", label: "Activity" }]
             : []),
@@ -4470,12 +4660,18 @@ function HappyAgentPanelBody(props: {
         ...toolTabItems(panelTools),
     ];
     const tabs = baseTabs;
+    const activeTabId =
+        props.panel.activeViewId === "files"
+            ? all
+                ? "files"
+                : "changes"
+            : props.panel.activeViewId;
     return (
         <>
             {/* The panel's own chrome control, at its leading edge. */}
             <PanelHeader edgeControl>
                 <Button
-                    aria-label="Hide panel"
+                    aria-label={PANEL_HIDE_LABEL}
                     aria-pressed
                     icon="panel-collapse"
                     iconOnly
@@ -4523,13 +4719,18 @@ function HappyAgentPanelBody(props: {
                             </>
                         ) : undefined
                     }
-                    activeId={props.panel.activeViewId}
+                    activeId={activeTabId}
                     closeLabel="Close tab"
                     {...(props.closeShortcut ? { closeShortcut: props.closeShortcut } : {})}
                     onClose={props.onViewClose}
                     onSelect={(tabId) => {
-                        if (tabId === "files") props.store.filesSelect();
-                        else if (tabId === "activity") props.onActivityOpen();
+                        if (tabId === "changes") {
+                            props.onScopeChange("changed");
+                            props.store.filesSelect();
+                        } else if (tabId === "files") {
+                            props.onScopeChange("all");
+                            props.store.filesSelect();
+                        } else if (tabId === "activity") props.onActivityOpen();
                         else if (tabId === "usage") props.onUsageOpen();
                         else if (tabId === "preview" && props.panel.previewEntryId)
                             props.store.previewOpen(props.panel.previewEntryId);
@@ -4544,6 +4745,7 @@ function HappyAgentPanelBody(props: {
                     // the main content is showing; neither has a form over there.
                     transferable={(tab) =>
                         tab.id !== "files" &&
+                        tab.id !== "changes" &&
                         tab.id !== "activity" &&
                         tab.id !== "usage" &&
                         tab.id !== "preview"
@@ -4594,16 +4796,6 @@ function HappyAgentPanelBody(props: {
                             {...(props.happyAgentAvailability === undefined
                                 ? { onOpen: props.onFileOpen }
                                 : {})}
-                            onScopeChange={(scope: HappyAgentFileScope) =>
-                                props.onScopeChange(scope)
-                            }
-                            {...(allFilesUnavailable === undefined
-                                ? {}
-                                : {
-                                      scopeUnavailable: {
-                                          all: allFilesUnavailable,
-                                      },
-                                  })}
                             onSelect={(path: string) => props.onFileSelect(path)}
                             onToggle={props.onToggle}
                             scope={props.scope}

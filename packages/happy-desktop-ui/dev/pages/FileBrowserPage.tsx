@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { FileBrowser, type FileBrowserLayout, type FileBrowserScope } from "../../src/FileBrowser";
+import { TabbedPane } from "../../src/TabbedPane";
 import {
     fileTreeBuild,
     fileTreeFlatten,
@@ -143,45 +144,53 @@ function panelFrame(children: ReactNode, height = 480, width = 320) {
 /**
  * A listing wired to its own state, so the specimen answers the keyboard the
  * way the product does: the arrow keys walk it, Left and Right disclose,
- * Enter opens, and the switches change what is listed without moving the row
- * the reader is standing on.
+ * Enter opens, and the scope tabs plus List / Tree choice change what is listed
+ * without moving the row the reader is standing on.
  */
 function LiveBrowser(props: { entries: FileTreeBuildEntry[]; height?: number; width?: number }) {
-    const [scope, scopeSet] = useState<FileBrowserScope>("all");
-    const [layout, layoutSet] = useState<FileBrowserLayout>("tree");
+    const [scope, scopeSet] = useState<FileBrowserScope>("changed");
+    const [layout, layoutSet] = useState<FileBrowserLayout>("flat");
     const [opened, openedSet] = useState<ReadonlySet<string>>(new Set());
     const [closed, closedSet] = useState<ReadonlySet<string>>(new Set());
     const [selectedId, selectedIdSet] = useState<string | undefined>(undefined);
     const expansion: FileTreeExpansion = { opened, closed, defaultDepth: 1 };
     const nodes =
-        layout === "tree"
+        scope === "all" || layout === "tree"
             ? fileTreeBuild(props.entries, expansion)
             : fileTreeFlatten(props.entries);
     return panelFrame(
-        <FileBrowser
-            count={props.entries.length}
-            layout={layout}
-            nodes={nodes}
-            onLayoutChange={layoutSet}
-            onScopeChange={scopeSet}
-            onSelect={(id) => selectedIdSet(id)}
-            onToggle={(path, expanded) => {
-                openedSet((current) => {
-                    const next = new Set(current);
-                    if (expanded) next.add(path);
-                    else next.delete(path);
-                    return next;
-                });
-                closedSet((current) => {
-                    const next = new Set(current);
-                    if (expanded) next.delete(path);
-                    else next.add(path);
-                    return next;
-                });
-            }}
-            scope={scope}
-            {...(selectedId ? { selectedId } : {})}
-        />,
+        <TabbedPane
+            activeId={scope === "changed" ? "changes" : "files"}
+            onSelect={(id) => scopeSet(id === "files" ? "all" : "changed")}
+            tabs={[
+                { icon: "diff", iconOnly: true, id: "changes", label: "Changes" },
+                { icon: "files", id: "files", label: "Files" },
+            ]}
+        >
+            <FileBrowser
+                count={props.entries.length}
+                layout={scope === "all" ? "tree" : layout}
+                nodes={nodes}
+                onLayoutChange={layoutSet}
+                onSelect={(id) => selectedIdSet(id)}
+                onToggle={(path, expanded) => {
+                    openedSet((current) => {
+                        const next = new Set(current);
+                        if (expanded) next.add(path);
+                        else next.delete(path);
+                        return next;
+                    });
+                    closedSet((current) => {
+                        const next = new Set(current);
+                        if (expanded) next.delete(path);
+                        else next.add(path);
+                        return next;
+                    });
+                }}
+                scope={scope}
+                {...(selectedId ? { selectedId } : {})}
+            />
+        </TabbedPane>,
         props.height ?? 480,
         props.width ?? 320,
     );
@@ -190,7 +199,7 @@ export function FileBrowserPage() {
     return (
         <ComponentPage
             number={componentNumber}
-            summary="One permanent Files tab contains a one-layer Changes / All Files choice: the group has no track, and only the selected option uses the file-tree selection fill. The same row carries totals and the List / Tree choice over a virtualized FileTree."
+            summary="Changes and Files are peer panel tabs, opening on Changes. The changed-files row carries totals and a flat List / Tree choice over the same virtualized FileTree; Files opens directly into its lazy tree."
             title="FileBrowser"
         >
             <Specimen
@@ -316,7 +325,7 @@ export function FileBrowserPage() {
             </Specimen>
 
             <Specimen
-                detail="Arrow keys walk it, Left and Right disclose, Enter opens; both switches keep the row you are on"
+                detail="Arrow keys walk it, Left and Right disclose, Enter opens; tabs and List / Tree keep the row you are on"
                 label="Live"
                 number="08"
                 stage="surface"
@@ -348,9 +357,6 @@ export function FileBrowserPage() {
                             layout="flat"
                             nodes={fileTreeFlatten(changed)}
                             scope="changed"
-                            scopeUnavailable={{
-                                all: "Happy Agent must reconnect before loading all files.",
-                            }}
                             selectedId="packages/happy-desktop-ui/src/FileTree.tsx"
                         />,
                     )}
