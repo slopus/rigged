@@ -35,6 +35,7 @@ import {
 } from "./runtimeValidation";
 import {
     buildIdentityArgument,
+    debugMetricsArgument,
     desktopIpc,
     happyBrowserPartition,
     happyHtmlPreviewPartition,
@@ -889,9 +890,12 @@ function localWindowCreate(bounds?: DesktopWindowBounds) {
                 ? {
                       additionalArguments: [
                           `${buildIdentityArgument}${JSON.stringify(buildIdentity)}`,
+                          ...(desktopDebugEnabled ? [debugMetricsArgument] : []),
                       ],
                   }
-                : {}),
+                : desktopDebugEnabled
+                  ? { additionalArguments: [debugMetricsArgument] }
+                  : {}),
             contextIsolation: true,
             nodeIntegration: false,
             preload: join(dirname, "preload.cjs"),

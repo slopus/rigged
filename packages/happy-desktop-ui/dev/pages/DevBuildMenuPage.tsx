@@ -1,4 +1,8 @@
 import { DevBuildMenu } from "../../src/DevBuildMenu";
+import type {
+    LivePerformanceSnapshot,
+    LivePerformanceStore,
+} from "../../src/LivePerformanceIndicator";
 import { Sidebar } from "../../src/Sidebar";
 import { SidebarFooter } from "../../src/SidebarFooter";
 import { ComponentPage, DimensionRule, Specimen } from "../kit";
@@ -7,6 +11,17 @@ import { ComponentPage, DimensionRule, Specimen } from "../kit";
 export const componentNumber = "C-177";
 
 const PATH = "/Users/kirilldubovitskiy/Happy/Workspaces/happy-desktop";
+const performanceStore: LivePerformanceStore = {
+    get: (): LivePerformanceSnapshot => ({
+        droppedFrames: 0,
+        fps: 60,
+        jsHeapLimitBytes: 512 * 1024 * 1024,
+        jsHeapUsedBytes: 123 * 1024 * 1024,
+        longestFrameMs: 17,
+        paused: false,
+    }),
+    subscribe: () => () => {},
+};
 
 export function DevBuildMenuPage() {
     return (
@@ -16,7 +31,7 @@ export function DevBuildMenuPage() {
             title="Development build menu"
         >
             <Specimen
-                detail="28px footer trigger · Blueprint glyph · branch name truncates · no resting dot or outline"
+                detail="28px footer trigger · Blueprint glyph · branch name truncates · development panel carries a compact renderer readout"
                 label="Sidebar footer"
                 number="01"
                 stage="app"
@@ -33,6 +48,7 @@ export function DevBuildMenuPage() {
                                             branch="feature/connection-indicator-styling"
                                             onBlueprintOpen={() => {}}
                                             onCopyPath={() => {}}
+                                            performance={performanceStore}
                                             path={PATH}
                                         />
                                     }

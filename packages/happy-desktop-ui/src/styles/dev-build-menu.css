@@ -190,3 +190,27 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+.happy-dev-build-menu__performance {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 0 10px;
+    overflow: hidden;
+    color: var(--text-secondary);
+}
+
+.happy-dev-build-menu__performance-label {
+    flex: none;
+    font-family: var(--happy-font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 14px;
+}
+
+.happy-dev-build-menu__performance .happy-live-performance {
+    flex: 1 1 auto;
+    width: auto;
+}

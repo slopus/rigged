@@ -99,6 +99,7 @@ import {
     type BrowserContentRenderer,
     HtmlPreviewFrame,
     type HtmlPreviewRenderer,
+    type LivePerformanceStore,
     type MediaWindowOpener,
     Button,
     ChannelHeader,
@@ -373,6 +374,8 @@ export interface AppHappyAgentViewProps {
      * Absent in the packaged product, where there is nothing to tell apart.
      */
     buildIdentity?: AppBuildIdentity;
+    /** Live renderer diagnostics, supplied only by an explicitly debug-launched desktop window. */
+    performance?: LivePerformanceStore;
     /** Which Happy Agent the URL addresses; its projects and sessions fill the window. */
     happyAgentId: string;
     /** Theme selection behind the sidebar footer's appearance toggle. */
@@ -1696,6 +1699,7 @@ export function AppHappyAgentView(props: AppHappyAgentViewProps) {
                                         .writeText(props.buildIdentity!.path)
                                         .catch(() => undefined)
                                 }
+                                performance={props.performance}
                                 path={props.buildIdentity.path}
                             />
                         ) : undefined

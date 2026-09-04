@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
     buildIdentityArgument,
+    debugMetricsArgument,
     desktopIpc,
     mediaPreviewArgument,
     type DesktopBrowserStatus,
@@ -41,9 +42,11 @@ function buildIdentityRead(): DesktopBuildIdentity | undefined {
 }
 
 const identity = buildIdentityRead();
+const debugMetricsEnabled = process.argv.includes(debugMetricsArgument);
 
 const bridge: HappyDesktopBridge = {
     ...(identity ? { buildIdentity: identity } : {}),
+    debugMetricsEnabled,
     appearanceSet: (mode) => ipcRenderer.send(desktopIpc.appearanceSet, mode),
     attachmentSourcePath(file: File) {
         // Chromium hands the renderer a `File` that hides where it came from,

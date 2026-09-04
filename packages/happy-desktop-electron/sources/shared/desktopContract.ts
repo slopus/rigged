@@ -362,6 +362,9 @@ export interface DesktopBuildIdentity {
 /** Launch argument prefix carrying `DesktopBuildIdentity` JSON into the preload. */
 export const buildIdentityArgument = "--happy-build-identity=";
 
+/** Launch argument enabling renderer-local diagnostics in an explicit debug window. */
+export const debugMetricsArgument = "--happy-debug-metrics";
+
 /**
  * Where local first-run setup currently stands. The stage is always derived from
  * what this machine actually has — a Node runtime, an installed agent, a
@@ -601,6 +604,13 @@ export interface HappyDesktopBridge {
      * whole life: the shell has it before the first frame and it never changes.
      */
     readonly buildIdentity?: DesktopBuildIdentity;
+    /**
+     * Whether this window was explicitly launched with desktop debug tooling.
+     * This is fixed for the window's life and is separate from `buildIdentity`:
+     * every development checkout has an identity, but only `--debug` windows
+     * should run the live metrics sampler.
+     */
+    readonly debugMetricsEnabled: boolean;
     /**
      * Makes Chromium's preferred color scheme follow Happy's selection, so
      * previews, browser guests, and auxiliary windows agree with

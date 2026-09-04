@@ -98,6 +98,11 @@ export {
 } from "./Badge";
 export { Box, type BoxProps } from "./Box";
 export { DevBuildMenu, type DevBuildMenuProps } from "./DevBuildMenu";
+export {
+    LivePerformanceIndicator,
+    type LivePerformanceSnapshot,
+    type LivePerformanceStore,
+} from "./LivePerformanceIndicator";
 export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from "./Button";
 export { QRCode, type QRCodeProps } from "./QRCode";
 export { ChannelHeader, type ChannelHeaderProps, type ChannelMember } from "./ChannelHeader";

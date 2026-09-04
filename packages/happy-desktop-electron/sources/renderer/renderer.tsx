@@ -48,6 +48,7 @@ import {
     type WelcomeSlide,
     type BrowserContentRenderer,
     type HtmlPreviewRenderer,
+    type LivePerformanceStore,
     type MediaWindowOpener,
 } from "happy-desktop-ui";
 import {
@@ -86,6 +87,7 @@ import { desktopPreferencesCreate } from "./desktopPreferences";
 import { desktopHistoryPersistence } from "./desktopHistory";
 import { desktopDebugStoreCreate } from "./desktopDebugStore";
 import { desktopProfilerStoreCreate } from "./desktopProfilerStore";
+import { desktopMetricsStoreCreate } from "./desktopMetricsStore";
 import { desktopDaemonStoreCreate } from "./desktopDaemonStore";
 import { desktopExperimentsPersistence } from "./desktopExperiments";
 import { desktopWelcomePersistence } from "./desktopWelcome";
@@ -235,6 +237,7 @@ function HappyAgentBoundary(props: {
     commandPalette: CommandPaletteStore;
     daemon?: AppHappyAgentDaemonStore;
     debug: AppHappyAgentDebugStore;
+    performance?: LivePerformanceStore;
     profiler: AppHappyAgentProfilerStore;
     bridge: HappyDesktopBridge;
     browserContent?: BrowserContentRenderer;
@@ -263,6 +266,7 @@ function HappyAgentBoundary(props: {
                 commandPalette: props.commandPalette,
                 ...(props.daemon ? { daemon: props.daemon } : {}),
                 debug: props.debug,
+                ...(props.performance ? { performance: props.performance } : {}),
                 profiler: props.profiler,
                 htmlPreview: props.htmlPreview,
                 mediaWindow: props.mediaWindow,
@@ -415,6 +419,7 @@ interface DesktopRendererProps {
     commandPalette: CommandPaletteStore;
     daemon?: AppHappyAgentDaemonStore;
     debug: AppHappyAgentDebugStore;
+    performance?: LivePerformanceStore;
     profiler: AppHappyAgentProfilerStore;
     onboarding: LocalOnboardingStore;
     browserContent?: BrowserContentRenderer;
@@ -772,6 +777,7 @@ function DesktopRuntimeContent(
                     commandPalette={props.commandPalette}
                     {...(props.daemon ? { daemon: props.daemon } : {})}
                     debug={props.debug}
+                    {...(props.performance ? { performance: props.performance } : {})}
                     profiler={props.profiler}
                     browserContent={props.browserContent}
                     htmlPreview={props.htmlPreview}
@@ -1007,6 +1013,9 @@ if (mediaPreviewBridge) {
         })();
         const { appearance, daemon } = shell;
         const debug = desktopDebugStoreCreate(desktopBridge);
+        const livePerformance = desktopBridge.debugMetricsEnabled
+            ? desktopMetricsStoreCreate()
+            : undefined;
         const profiler = desktopProfilerStoreCreate(desktopBridge);
         // Defaults and model picker memory belong to the desktop, not one daemon.
         // The state stores stay synchronous while the bridge persists their typed
@@ -1088,6 +1097,7 @@ if (mediaPreviewBridge) {
                         commandPalette={commandPalette}
                         {...(daemon ? { daemon } : {})}
                         debug={debug}
+                        {...(livePerformance ? { performance: livePerformance } : {})}
                         profiler={profiler}
                         onboarding={onboardingStore}
                         browserContent={browserLocal ? undefined : desktopBrowserContentRender}

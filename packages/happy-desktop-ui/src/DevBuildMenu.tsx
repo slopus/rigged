@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Icon } from "./Icon";
+import { LivePerformanceIndicator, type LivePerformanceStore } from "./LivePerformanceIndicator";
 import { Octicon } from "./vectorIcons/VectorIcon";
 
 export type DevBuildMenuProps = {
@@ -12,6 +13,8 @@ export type DevBuildMenuProps = {
     onBlueprintOpen?: () => void;
     /** Copies the checkout path associated with this development window. */
     onCopyPath?: () => void;
+    /** Live renderer diagnostics shown only while the development menu is open. */
+    performance?: LivePerformanceStore;
     /** Full checkout path, shown as a tooltip on the trigger and menu row. */
     path?: string;
     style?: CSSProperties;
@@ -130,6 +133,24 @@ export function DevBuildMenu(props: DevBuildMenuProps) {
                         <Octicon name="git-branch" size={16} />
                         <span>{name}</span>
                     </div>
+                    {props.performance ? (
+                        <>
+                            <div
+                                aria-hidden="true"
+                                className="happy-dev-build-menu__separator"
+                                data-happy-desktop-ui="dev-build-menu-performance-separator"
+                            />
+                            <div
+                                className="happy-dev-build-menu__performance"
+                                data-happy-desktop-ui="dev-build-menu-performance"
+                            >
+                                <span className="happy-dev-build-menu__performance-label">
+                                    Renderer
+                                </span>
+                                <LivePerformanceIndicator store={props.performance} />
+                            </div>
+                        </>
+                    ) : null}
                     {props.onCopyPath ? (
                         <button
                             className="happy-dev-build-menu__item"

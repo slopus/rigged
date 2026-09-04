@@ -73,6 +73,9 @@ async function request<Value>(action: string, input?: unknown): Promise<Value> {
  */
 export function browserDevBridgeCreate(): HappyDesktopBridge {
     return {
+        // Browser-local development has no explicit Electron debug launch, so
+        // it must not start the desktop-only live metrics sampler.
+        debugMetricsEnabled: false,
         // A normal browser exposes no native preferred-color-scheme override;
         // the application tree itself is already controlled by ThemeScope.
         appearanceSet: () => undefined,

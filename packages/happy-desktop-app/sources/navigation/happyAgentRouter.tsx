@@ -29,6 +29,7 @@ import type {
 import type {
     BrowserContentRenderer,
     HtmlPreviewRenderer,
+    LivePerformanceStore,
     MediaWindowOpener,
 } from "happy-desktop-ui";
 import {
@@ -66,6 +67,8 @@ export interface HappyAgentRouterContext {
      */
     readonly mediaWindow?: MediaWindowOpener;
     readonly debug?: AppHappyAgentDebugStore;
+    /** Live renderer diagnostics, present only in an explicitly debug-launched desktop window. */
+    readonly performance?: LivePerformanceStore;
     readonly daemon?: AppHappyAgentDaemonStore;
     readonly profiler?: AppHappyAgentProfilerStore;
     readonly happyAgents: AppHappyAgentDirectoryStore;
@@ -409,6 +412,7 @@ function HappyAgentWorkspaceLayout(
             appearance={context.appearance}
             browserContent={context.browserContent}
             buildIdentity={context.buildIdentity}
+            performance={context.performance}
             htmlPreview={context.htmlPreview}
             mediaWindow={context.mediaWindow}
             chatId={params.chatId}
