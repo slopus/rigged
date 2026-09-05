@@ -3303,6 +3303,20 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
             <HappyAgentConversationBody
                 activitySelected={panel.open && panel.activeViewId === "activity"}
                 conversation={conversation}
+                emptyContent={
+                    openBot?.systemKey === "chief_of_staff" &&
+                    conversation.type === "ready" &&
+                    openBot.conversation.id === conversation.value.conversationId ? (
+                        <EmptyState
+                            animation="chief-of-staff"
+                            description="This bot has elevated permissions to configure Happy around your needs. Tell it how you want Happy to work for you."
+                            emphasis="prominent"
+                            icon="shield"
+                            size="panel"
+                            title="Your Chief of Staff"
+                        />
+                    ) : undefined
+                }
                 focusOnType
                 groupId={openGroup.id}
                 groupName={openGroup.name}
@@ -4421,6 +4435,7 @@ function HappyAgentGroupComposer(props: {
 function HappyAgentConversationBody(props: {
     activitySelected: boolean;
     conversation: HappyAgentWorkspaceSnapshot["conversation"];
+    emptyContent?: ReactNode;
     focusOnType: boolean;
     groupId: string;
     groupName: string;
@@ -4463,6 +4478,7 @@ function HappyAgentConversationBody(props: {
             <HappyAgentConversationSurface
                 activitySelected={props.activitySelected}
                 conversation={conversation.value}
+                emptyContent={props.emptyContent}
                 focusOnType={props.focusOnType}
                 groupId={props.groupId}
                 groupName={props.groupName}
@@ -4603,6 +4619,7 @@ function happyAgentDelegatedElapsedMs(
 function HappyAgentConversationSurface(props: {
     activitySelected: boolean;
     conversation: HappyAgentConversationSnapshot;
+    emptyContent?: ReactNode;
     focusOnType: boolean;
     groupId: string;
     groupName: string;
@@ -4681,6 +4698,7 @@ function HappyAgentConversationSurface(props: {
     const activityTotal = activeActivity.agents + activeActivity.terminals;
     return (
         <ConversationView
+            emptyContent={props.emptyContent}
             agentAuthor={agentAuthor}
             activityControl={
                 activityTotal > 0 ? (

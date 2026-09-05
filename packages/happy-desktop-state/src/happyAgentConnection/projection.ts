@@ -485,6 +485,7 @@ export function projectBots(
                 workspaceId: bot.workspaceId,
                 name: bot.name,
                 username: bot.username,
+                ...(bot.systemKey === undefined ? {} : { systemKey: bot.systemKey }),
                 orderKey: bot.orderKey,
                 path: computePath(bot.compute),
                 ...(bot.avatar === null

@@ -3,6 +3,18 @@ import { type CSSProperties } from "react";
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
 import { LottieScene, type LottieSceneName, type LottieScenePlay } from "./LottieScene";
+import { EmptyStateVideo } from "./emptyState/EmptyStateVideo";
+import chiefOfStaffVideo from "./assets/animations/chief-of-staff.mp4?url";
+import chiefOfStaffPoster from "./assets/animations/chief-of-staff.png?url";
+import { thumbHashToDataURL } from "thumbhash";
+
+// Generated from the bundled chief-of-staff.png poster at 100 × 100 RGBA.
+const chiefOfStaffPreview = thumbHashToDataURL(
+    new Uint8Array([
+        28, 8, 6, 95, 16, 85, 106, 230, 144, 72, 166, 86, 152, 217, 138, 22, 104, 102, 134, 48, 40,
+        9, 131, 2,
+    ]),
+);
 export type EmptyStateSize = "panel" | "inline";
 export type EmptyStateAction = {
     label: string;
@@ -18,6 +30,8 @@ export type EmptyStateProps = {
     description?: string;
     action?: EmptyStateAction;
     size?: EmptyStateSize;
+    /** Larger, higher-contrast copy for an introduction that deserves attention. */
+    emphasis?: "standard" | "prominent";
     /**
      * Replaces the icon medallion with a large animated scene: its own
      * transparent region above the words, with no card, medallion, or fill
@@ -26,15 +40,16 @@ export type EmptyStateProps = {
      * chosen for what it says, not for decoration. See `LottieScene` for what
      * each name means.
      *
-     * The glyph stays required and is drawn inside that region until the scene
+     * The Chief of Staff scene uses a rounded silent MP4 with a still poster.
+     * Other scenes use Lottie. The glyph stays required and is drawn until Lottie
      * paints: it is what the reader sees while the runtime loads, and what they
      * keep if it cannot load at all.
      */
-    animation?: LottieSceneName;
+    animation?: LottieSceneName | "chief-of-staff";
     /**
      * When the animated scene takes its one play. Defaults to `on-appear`.
      * Fixtures that must photograph identically every time pass `on-demand`,
-     * which holds the same final frame from the start.
+     * which holds a still frame from the start (the poster for MP4 scenes).
      */
     animationPlay?: LottieScenePlay;
 };
@@ -67,6 +82,7 @@ export function EmptyState(props: EmptyStateProps) {
         "className",
         "data-testid",
         "description",
+        "emphasis",
         "icon",
         "size",
         "style",
@@ -77,12 +93,21 @@ export function EmptyState(props: EmptyStateProps) {
         <div
             className={["happy-empty-state", local.className].filter(Boolean).join(" ")}
             data-animated={local.animation === undefined ? undefined : ""}
+            data-emphasis={local.emphasis}
             data-happy-desktop-ui="empty-state"
             data-size={size()}
             data-testid={local["data-testid"]}
             style={local.style}
         >
-            {local.animation === undefined ? (
+            {local.animation === "chief-of-staff" ? (
+                <EmptyStateVideo
+                    play={local.animationPlay ?? "on-appear"}
+                    poster={chiefOfStaffPoster}
+                    preview={chiefOfStaffPreview}
+                    size={sceneSize[size()]}
+                    src={chiefOfStaffVideo}
+                />
+            ) : local.animation === undefined ? (
                 <span
                     className="happy-empty-state__media"
                     data-happy-desktop-ui="empty-state-media"

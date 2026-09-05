@@ -190,3 +190,89 @@
 .happy-empty-state[data-size="inline"] .happy-empty-state__actions {
     margin-top: 16px;
 }
+
+/* Introductory copy has its own readable measure and gap-owned rhythm, while
+   the normal empty states retain their compact treatment. */
+.happy-empty-state[data-emphasis="prominent"] {
+    gap: 12px;
+}
+
+.happy-empty-state[data-size="panel"][data-emphasis="prominent"] {
+    flex: 1 0 auto;
+    height: auto;
+    min-height: 100%;
+}
+
+.happy-empty-state[data-size][data-emphasis="prominent"] .happy-empty-state__title {
+    max-width: 440px;
+    margin: 0;
+    font-size: 24px;
+    line-height: 32px;
+}
+
+.happy-empty-state[data-size][data-emphasis="prominent"] .happy-empty-state__description {
+    max-width: 440px;
+    margin: 0;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 24px;
+}
+
+.happy-empty-state[data-size][data-emphasis="prominent"] .happy-empty-state__actions {
+    margin: 0;
+}
+
+.happy-empty-state-video {
+    position: relative;
+    display: flex;
+    flex: none;
+    box-sizing: border-box;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--divider);
+    border-radius: var(--happy-radius-shell);
+    background: var(--input-background);
+    background-size: cover;
+    background-position: center;
+    cursor: pointer;
+}
+
+.happy-empty-state-video:disabled {
+    cursor: default;
+}
+
+.happy-empty-state-video:focus-visible {
+    outline: 2px solid var(--text-link);
+    outline-offset: 2px;
+}
+
+.happy-empty-state-video__poster,
+.happy-empty-state-video__clip {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    object-fit: cover;
+    border-radius: calc(var(--happy-radius-shell) - 1px);
+}
+
+.happy-empty-state-video__clip {
+    /* The video overlays its always-available poster in the same border box;
+       flexbox cannot place both images in the same slot. */
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.happy-empty-state-video__poster {
+    opacity: 0;
+}
+
+.happy-empty-state-video[data-poster-ready="true"] .happy-empty-state-video__poster {
+    opacity: 1;
+}
+
+.happy-empty-state-video[data-playing-image="video"] .happy-empty-state-video__clip {
+    opacity: 1;
+}

@@ -168,6 +168,7 @@ function catalogProject(
         conversation: happyAgentConversationSummaryProject(conversationProject(bot.session)),
         name: bot.name,
         username: bot.username,
+        ...(bot.systemKey === undefined ? {} : { systemKey: bot.systemKey }),
         orderKey: bot.orderKey,
         path: bot.path,
         displayPath: bot.path,

@@ -65,6 +65,8 @@ export interface HappyAgentBot {
     readonly name: string;
     /** Immutable local snake_case name, also the folder the bot works in. */
     readonly username: string;
+    /** Daemon-provided built-in bot identity; null or absent for ordinary bots. */
+    readonly systemKey?: string | null;
     /** Fractional index the host sorts the bot catalog by. */
     readonly orderKey: string;
     readonly path: string;

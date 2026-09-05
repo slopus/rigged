@@ -266,8 +266,8 @@ importers:
   packages/happy-desktop-state:
     dependencies:
       '@slopus/happy-agent-client':
-        specifier: 0.0.51
-        version: 0.0.51
+        specifier: 0.0.52
+        version: 0.0.52
       yjs:
         specifier: ^13.6.31
         version: 13.6.31
@@ -1952,8 +1952,8 @@ packages:
     resolution: {integrity: sha512-nsqdm0epXUHhX6BLpWVuA3l/2d8aGmw588nU90pq7hwl55xVEIHl0wouiOP57BtE1vDBUDcO+MYtln2TWHfWeA==}
     engines: {node: '>=20'}
 
-  '@slopus/happy-agent-client@0.0.51':
-    resolution: {integrity: sha512-8omN7MgCTHfygryMRKK2DESj1371fRmQ79noeYQEsG5lp2DMMokOx4hK0dKTX+keKQUrAKjVtZenSHyoLTnUJQ==}
+  '@slopus/happy-agent-client@0.0.52':
+    resolution: {integrity: sha512-aQKq9byb5uAXKV30gASinIq7IHirVUClxjZB82NNZLub7BbCO+q/FsitXaj1n4fievf3kLusZ0/yODwMLcd3Nw==}
     engines: {node: '>=20'}
 
   '@standard-schema/spec@1.1.0':
@@ -7142,7 +7142,7 @@ snapshots:
     dependencies:
       '@sinclair/typebox': 0.34.52
 
-  '@slopus/happy-agent-client@0.0.51':
+  '@slopus/happy-agent-client@0.0.52':
     dependencies:
       '@sinclair/typebox': 0.34.52
 

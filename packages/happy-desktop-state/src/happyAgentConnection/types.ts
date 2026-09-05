@@ -592,6 +592,8 @@ export interface BotGroup {
     name: string;
     /** Immutable local snake_case name, also the bot's folder name. */
     username: string;
+    /** Daemon-provided built-in bot identity; null or absent for ordinary bots. */
+    systemKey?: string | null;
     orderKey: string;
     path: string;
     /** Present when the bot has a picture; the bytes are fetched separately. */

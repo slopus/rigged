@@ -1,3 +1,5 @@
+import { type ComposerSnapshot } from "happy-desktop-state";
+import { ConversationView } from "../../src/ConversationView";
 import { EmptyState } from "../../src/EmptyState";
 import { ComponentPage, DimensionRule, Specimen } from "../kit";
 
@@ -5,6 +7,18 @@ import { ComponentPage, DimensionRule, Specimen } from "../kit";
 export const componentNumber = "C-024";
 
 const noop = () => {};
+
+const composer: ComposerSnapshot = {
+    agentUserIds: [],
+    attachments: [],
+    capabilities: { commands: [], mentions: false, shellMode: false },
+    focused: false,
+    mentionCandidates: [],
+    revision: 0,
+    scopeId: "chief-of-staff",
+    submission: { status: "idle" },
+    text: "",
+};
 
 const panelStage: Record<string, string> = {
     display: "flex",
@@ -93,6 +107,33 @@ export function EmptyStatePage() {
                     />
                 </Specimen>
             </div>
+            <Specimen
+                detail="128px silent MP4 · plays once · thumbhash preview · 14px rounded border · title 24/32"
+                label="Chief of Staff conversation"
+                number="E-05"
+                stage="surface"
+            >
+                <div style={{ display: "flex", width: "560px", height: "480px" }}>
+                    <ConversationView
+                        composer={composer}
+                        composerPlaceholder="Message Chief of Staff…"
+                        emptyContent={
+                            <EmptyState
+                                animation="chief-of-staff"
+                                animationPlay="on-demand"
+                                description="This bot has elevated permissions to configure Happy around your needs. Tell it how you want Happy to work for you."
+                                emphasis="prominent"
+                                icon="shield"
+                                size="panel"
+                                title="Your Chief of Staff"
+                            />
+                        }
+                        entries={[]}
+                        onComposerSend={noop}
+                        onComposerValueChange={noop}
+                    />
+                </div>
+            </Specimen>
         </ComponentPage>
     );
 }

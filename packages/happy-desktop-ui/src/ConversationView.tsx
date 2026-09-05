@@ -97,6 +97,8 @@ export type ConversationViewProps = {
      */
     streamingCaret?: boolean;
     entries: readonly ConversationEntry[];
+    /** Custom introduction for a loaded conversation with no transcript entries. */
+    emptyContent?: ReactNode;
     /** Agent identity shown when a tool/activity row opens a turn before prose exists. */
     agentAuthor?: ConversationAuthor;
     /** Identity id of the reader, so their own messages take the own treatment. */
@@ -509,15 +511,17 @@ export function ConversationView(props: ConversationViewProps) {
                     data-happy-desktop-ui="conversation-empty"
                     viewportClassName="happy-conversation__empty-viewport"
                 >
-                    <EmptyState
-                        // A conversation with nothing in it is an agent waiting
-                        // to be told what to do, so that is what it looks like.
-                        animation="robot"
-                        description="Send a message to start working in this conversation."
-                        icon="chat"
-                        size="panel"
-                        title="Nothing here yet"
-                    />
+                    {props.emptyContent ?? (
+                        <EmptyState
+                            // A conversation with nothing in it is an agent waiting
+                            // to be told what to do, so that is what it looks like.
+                            animation="robot"
+                            description="Send a message to start working in this conversation."
+                            icon="chat"
+                            size="panel"
+                            title="Nothing here yet"
+                        />
+                    )}
                     {activityFallback}
                 </ScrollArea>
             ) : (
