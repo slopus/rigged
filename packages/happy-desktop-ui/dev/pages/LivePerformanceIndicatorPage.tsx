@@ -43,7 +43,7 @@ export function LivePerformanceIndicatorPage() {
             title="Live performance indicator"
         >
             <Specimen
-                detail="compact development-panel readout · tabular numbers · JavaScript heap used/limit in the tooltip label"
+                detail="compact development-panel readout · fixed metric/value columns · tabular values"
                 label="Normal renderer"
                 number="01"
                 stage="chrome"

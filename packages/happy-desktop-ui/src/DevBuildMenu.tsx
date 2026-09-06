@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useLayoutEffect, useState, type CSSProperties } from "react";
 import { Icon } from "./Icon";
 import { LivePerformanceIndicator, type LivePerformanceStore } from "./LivePerformanceIndicator";
 import { Octicon } from "./vectorIcons/VectorIcon";
@@ -28,28 +28,21 @@ function branchLabel(branch: string, label: string | undefined): string {
  * C-177 DevBuildMenu — the development-only identity and workbench trigger.
  * The branch name sits quietly in the sidebar footer; its transient menu opens
  * upward like the composer model picker so development tools stay out of the
- * main navigation.
+ * main navigation. Once opened, the popover stays put until the trigger is
+ * clicked again; Escape and action completion remain explicit dismissals.
  */
 export function DevBuildMenu(props: DevBuildMenuProps) {
     const [open, setOpen] = useState(false);
-    const root = useRef<HTMLDivElement>(null);
     const name = branchLabel(props.branch, props.label);
 
-    // eslint-disable-next-line happy-react/no-layout-effect -- an open popover owns document-level outside-pointer and Escape listeners that are attached after commit and completely removed when it closes
+    // eslint-disable-next-line happy-react/no-layout-effect -- Escape is the keyboard equivalent of clicking the trigger again; the listener exists only while the sticky popover is open
     useLayoutEffect(() => {
         if (!open) return;
-        const closeOnOutsidePointer = (event: PointerEvent) => {
-            if (event.target instanceof Node && !root.current?.contains(event.target)) {
-                setOpen(false);
-            }
-        };
         const closeOnEscape = (event: KeyboardEvent) => {
             if (event.key === "Escape") setOpen(false);
         };
-        document.addEventListener("pointerdown", closeOnOutsidePointer, true);
         document.addEventListener("keydown", closeOnEscape, true);
         return () => {
-            document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
             document.removeEventListener("keydown", closeOnEscape, true);
         };
     }, [open]);
@@ -59,12 +52,11 @@ export function DevBuildMenu(props: DevBuildMenuProps) {
             className={["happy-dev-build-menu", props.className].filter(Boolean).join(" ")}
             data-happy-desktop-ui="dev-build-menu"
             data-open={open ? "" : undefined}
-            ref={root}
             style={props.style}
         >
             <button
                 aria-expanded={open}
-                aria-haspopup="menu"
+                aria-haspopup="dialog"
                 aria-label={`Development build: ${name}`}
                 className="happy-dev-build-menu__trigger"
                 data-happy-desktop-ui="dev-build-menu-trigger"
@@ -82,10 +74,11 @@ export function DevBuildMenu(props: DevBuildMenuProps) {
             </button>
             {open ? (
                 <div
-                    aria-label="Development menu"
+                    aria-label="Development panel"
+                    aria-modal="false"
                     className="happy-dev-build-menu__menu"
                     data-happy-desktop-ui="dev-build-menu-popover"
-                    role="menu"
+                    role="dialog"
                 >
                     <div
                         className="happy-dev-build-menu__eyebrow"
@@ -102,7 +95,6 @@ export function DevBuildMenu(props: DevBuildMenuProps) {
                                     props.onBlueprintOpen?.();
                                     setOpen(false);
                                 }}
-                                role="menuitem"
                                 type="button"
                             >
                                 <span
@@ -144,9 +136,6 @@ export function DevBuildMenu(props: DevBuildMenuProps) {
                                 className="happy-dev-build-menu__performance"
                                 data-happy-desktop-ui="dev-build-menu-performance"
                             >
-                                <span className="happy-dev-build-menu__performance-label">
-                                    Renderer
-                                </span>
                                 <LivePerformanceIndicator store={props.performance} />
                             </div>
                         </>
@@ -159,7 +148,6 @@ export function DevBuildMenu(props: DevBuildMenuProps) {
                                 props.onCopyPath?.();
                                 setOpen(false);
                             }}
-                            role="menuitem"
                             type="button"
                         >
                             <span

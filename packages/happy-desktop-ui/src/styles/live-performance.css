@@ -1,48 +1,36 @@
 /* Live renderer diagnostics: visible only in an explicitly debug-launched app. */
 
 .happy-live-performance {
-    display: flex;
+    /* eslint-disable-next-line happy-layout/use-flex-layout -- fixed metric/value tracks keep every changing number in one stable right-aligned column */
+    display: grid;
     flex: none;
-    align-items: center;
-    gap: 4px;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 2px;
     box-sizing: border-box;
-    width: 120px;
+    width: 100%;
     max-width: 100%;
-    height: 28px;
     min-width: 0;
-    padding: 0 4px;
-    overflow: hidden;
+    padding: 2px 0;
     color: var(--text-secondary);
     font-family: var(--happy-font-mono);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
     font-synthesis: none;
-    line-height: 16px;
-    white-space: nowrap;
+    line-height: 15px;
 }
 
-.happy-live-performance__metric {
-    display: block;
+.happy-live-performance__metric,
+.happy-live-performance__value {
     min-width: 0;
-    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.happy-live-performance__separator {
-    flex: none;
-    color: var(--text-secondary);
+.happy-live-performance__value {
+    text-align: right;
 }
 
-.happy-live-performance__metric[data-happy-desktop-ui="live-performance-fps"],
-.happy-live-performance__metric[data-happy-desktop-ui="live-performance-dropped"] {
-    flex: none;
-}
-
-.happy-live-performance__metric[data-happy-desktop-ui="live-performance-heap"] {
-    flex: 1 1 auto;
-}
-
-.happy-live-performance[data-dropped="true"] {
+.happy-live-performance__value[data-dropped="true"] {
     color: var(--warning-critical);
 }

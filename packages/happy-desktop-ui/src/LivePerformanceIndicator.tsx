@@ -56,46 +56,72 @@ export function LivePerformanceIndicator(props: { store: LivePerformanceStore })
     const snapshot = useSyncExternalStore(props.store.subscribe, props.store.get, props.store.get);
     const label = performanceLabel(snapshot);
     const fps = snapshot.paused ? "paused" : `${snapshot.fps ?? "—"} fps`;
-    const heap = `heap ${bytesShort(snapshot.jsHeapUsedBytes)}${
-        snapshot.jsHeapLimitBytes === undefined ? "" : `/${bytesShort(snapshot.jsHeapLimitBytes)}`
-    }`;
+    const heap =
+        snapshot.jsHeapUsedBytes === undefined
+            ? "unavailable"
+            : `${bytesShort(snapshot.jsHeapUsedBytes)}${
+                  snapshot.jsHeapLimitBytes === undefined
+                      ? ""
+                      : ` / ${bytesShort(snapshot.jsHeapLimitBytes)}`
+              }`;
+    const longest = snapshot.longestFrameMs === undefined ? "—" : `${snapshot.longestFrameMs} ms`;
     return (
-        <span
+        <div
             aria-label={label}
             className="happy-live-performance"
-            data-dropped={snapshot.droppedFrames > 0 ? "true" : undefined}
             data-happy-desktop-ui="live-performance"
             role="group"
             title={label}
         >
             <span
                 className="happy-live-performance__metric"
+                data-happy-desktop-ui="live-performance-fps-label"
+            >
+                FPS
+            </span>
+            <span
+                className="happy-live-performance__value"
                 data-happy-desktop-ui="live-performance-fps"
             >
                 {fps}
             </span>
-            <span aria-hidden="true" className="happy-live-performance__separator">
-                ·
-            </span>
             <span
                 className="happy-live-performance__metric"
+                data-happy-desktop-ui="live-performance-heap-label"
+            >
+                JS heap
+            </span>
+            <span
+                className="happy-live-performance__value"
                 data-happy-desktop-ui="live-performance-heap"
             >
                 {heap}
             </span>
-            {snapshot.droppedFrames > 0 ? (
-                <>
-                    <span aria-hidden="true" className="happy-live-performance__separator">
-                        ·
-                    </span>
-                    <span
-                        className="happy-live-performance__metric"
-                        data-happy-desktop-ui="live-performance-dropped"
-                    >
-                        drop {snapshot.droppedFrames}
-                    </span>
-                </>
-            ) : null}
-        </span>
+            <span
+                className="happy-live-performance__metric"
+                data-happy-desktop-ui="live-performance-longest-label"
+            >
+                Longest frame
+            </span>
+            <span
+                className="happy-live-performance__value"
+                data-happy-desktop-ui="live-performance-longest"
+            >
+                {longest}
+            </span>
+            <span
+                className="happy-live-performance__metric"
+                data-happy-desktop-ui="live-performance-dropped-label"
+            >
+                Dropped
+            </span>
+            <span
+                className="happy-live-performance__value"
+                data-dropped={snapshot.droppedFrames > 0 ? "true" : undefined}
+                data-happy-desktop-ui="live-performance-dropped"
+            >
+                {snapshot.droppedFrames}
+            </span>
+        </div>
     );
 }
