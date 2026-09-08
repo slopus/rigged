@@ -1,0 +1,27 @@
+Got the strong signal. The Grok subagent had died on a provider mismatch, so I ran Grok's X search directly — full thread + trending-skills sweep. Here's the digest.
+
+## The Matt Pocock thread (your tweet's origin, ~362k views)
+
+The consensus one-liner from the replies: **"don't make reviewers read more code — make the agent explain the change."** Thread: [x.com/mattpocockuk/status/2096666329495257563](https://x.com/mattpocockuk/status/2096666329495257563)
+
+## Strongest signals, ranked
+
+| Tool | Author | Signal | What it is |
+|---|---|---|---|
+| **Archify** | `tt-a1i` | **50k+ stars, GitHub #1 trending, +17k/wk** | Inspects the actual codebase → interactive HTML diagrams (architecture, sequence, data-flow) with **Before/After delta views for PRs**, nodes linked to commits/lines. Typed JSON + deterministic validation so the topology is verifiable, not hallucinated. [github.com/tt-a1i/archify](https://github.com/tt-a1i/archify) |
+| **diagram-design** | [@cathrynlavery](https://x.com/cathrynlavery) | **30k+ stars**, most-discussed | 39 diagram types, 3 style variants, brand-matching from a URL, self-contained HTML+SVG. The "no more Mermaid slop" one — editorial quality, static. [github.com/cathrynlavery/diagram-design](https://github.com/cathrynlavery/diagram-design) |
+| **pr-lens** (your tweet) | @ColdteaAI | 1.8K likes, biggest quote of the thread | Animated architecture/data-flow walkthroughs **inside the PR** — GitHub App/Action/CLI/agent skill. `npx skills add coldteadotai/pr-lens`. [Demo](https://prlens.dev/c/uSdxMcPBFwhfgfaGh-dveQ) |
+| **/show-me** | [@dexhorthy](https://x.com/dexhorthy) (HumanLayer) | ~11k installs, 2.5k stars; Matt's earlier "phenomenal" post got 7.6k likes | Easy-to-read diff renderings. [SKILL.md](https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md) — no relation to your old project, same name coincidence |
+| **Narrated PR video** | [@dctanner](https://x.com/dctanner) | the thread's "wildest" | Screenshots → ffmpeg video + ElevenLabs/Inworld TTS narration of the change. [Gist](https://gist.github.com/dctanner/ee7fe7997bba0efbca49b8c0bdc1936a) |
+| **guided-pr-walkthrough** | @lustoykov | tiny (~3 likes) but a direct match to yours | Step-by-step: pseudocode, diagrams, before/after state, links to code. [SKILL.md](https://github.com/lustoykov/skills/blob/main/guided-pr-walkthrough/SKILL.md) |
+
+Also worth one line each: Chen Cheng's expanded review checklist was the highest-engagement *technique* quote (~269 likes — `/show-me` + mermaid + test logs + design doc + cross-agent `/review` pasted into the PR); jamonholmgren does screenshot-vs-Figma visual diffs; and there's a live debate under the thread that "evidence of TDD" is theater when the same agent writes code and tests.
+
+## How your `change-tree` skill fits this landscape
+
+The market split is clear: **interactive HTML** (Archify, pr-lens, diagram-design) vs **terminal-native text** (your change-tree, /show-me's spirit, pseudocode walkthroughs). Nobody with high engagement owns the ASCII/terminal end — the search explicitly noted "no high-engagement dedicated PR-diff ASCII tools trended." Two things worth stealing regardless of format:
+
+1. **Before/After delta views** (Archify) — your skill has OLD/NEW paths already; making that a mandatory section rather than optional would match what's resonating.
+2. **Verifiability as a feature** (Archify's "validated against code, not hallucinated") — your skill's "ground every ★ in the actual diff" rule is the same idea; it's the differentiator people are praising, so keep it load-bearing.
+
+If you want, I can pull any of these SKILL.md files down and do a side-by-side against change-tree.

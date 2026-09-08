@@ -262,3 +262,40 @@ alter a second measurement's paint. `renderer.screenshot()` writes inspection
 PNGs only when `VITE_HAPPY_DESKTOP_WRITE_SCREENSHOTS=1`; use
 `pnpm --filter happy-desktop-gym test:playwright:artifacts` for a deliberate
 artifact refresh.
+
+### Transcript streaming layout regression
+
+The browser gym's `ConversationStreamingGeometry.test.tsx` consumer mounts the
+real `ConversationView` with streamed prose, an Edit activity, and the working
+status. Run it from the repository root (with reviewed full access on macOS):
+
+```sh
+VITE_HAPPY_DESKTOP_WRITE_SCREENSHOTS=1 pnpm --dir packages/happy-desktop-ui test src/ConversationStreamingGeometry.test.tsx
+```
+
+Commit `1d1f9f7e` replaced live Markdown/font layout with character-count height
+estimates to avoid retaining streamed prefixes. Those estimates became
+authoritative virtual-row offsets: excess height left blank gaps, and insufficient
+height overlapped following rows. Before the fix, even the two-paragraph repro
+painted 209px but reserved 225px in all three engines.
+
+The regression checks live and settled row bounds, rich Markdown, width changes,
+stable row/focus identity, bottom following, and growing expanded shell output.
+It also checks that each streamed prefix uses the settled layout algorithm while
+leaving the retained history cache unchanged. Chromium, Firefox, and WebKit run
+at 2×; inspection PNGs are saved beside the test.
+
+The rich-table fixture preserves a second user-reported payload verbatim and
+streams it through ordinary chunks and Markdown delimiters at 800px, 560px, and
+360px. This catches the syntax-only stages that complete-message fixtures miss:
+an empty table row has padding but no text line, an empty heading has a box and
+collapsing margins but no line, and an empty list item still has its marker line.
+The model distinguishes an empty rendered element from omitted definitions/HTML;
+it never repairs row sizes from DOM measurements.
+
+Known separate limitation: Pretext 0.0.8 and Gecko disagree on narrow URL line
+breaks even for settled text. The 360px Firefox replay and an isolated settled
+prefix are executable expected failures (not skipped or given a larger tolerance).
+The 800px/560px Firefox replays, empty-block cases in every engine, and all
+Chromium/WebKit widths must pass. Happy Desktop uses Chromium. This change does
+not claim to fix the independent Gecko line-breaking model.

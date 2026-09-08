@@ -101,9 +101,9 @@ export interface MessageTextLayoutCache {
 /**
  * One conversation's text-layout cache. Settled transcript text is retained so
  * revisiting a long history does not reparse it. Streaming text deliberately
- * does not enter these source-keyed dictionaries: each growing prefix would
- * otherwise retain another Markdown tree and prepared run until the view dies.
- * The conversation surface owns the cache lifetime.
+ * uses a measurement-local cache: each growing prefix receives the same exact
+ * layout without retaining another Markdown tree and prepared run until the
+ * view dies. The conversation surface owns the settled cache lifetime.
  */
 export function messageTextLayoutCacheCreate(): MessageTextLayoutCache {
     return {
@@ -176,33 +176,12 @@ export function monoOutputTextHeight(
     cache: MessageTextLayoutCache = sharedCache,
     streaming = false,
 ): number {
-    if (streaming) return streamingMonoOutputTextHeight(text, measure);
+    const measurementCache = streaming ? messageTextLayoutCacheCreate() : cache;
     const lines = text.split("\n");
     if (lines.length > 1 && lines.at(-1) === "") lines.pop();
     let height = 0;
-    for (const line of lines) height += runHeight(line, `12px ${MONO_FAMILY}`, 18, measure, cache);
-    return Math.max(18, height);
-}
-/**
- * Cheap provisional geometry for live shell output. A running command can
- * append to its output on every event, so source-keyed monospace layout would
- * retain every growing prefix. The settled pass switches back to exact layout.
- */
-function streamingMonoOutputTextHeight(text: string, measure: number): number {
-    if (measure <= 0) return 18;
-    const available = Math.max(1, measure);
-    const newline = text.indexOf("\n");
-    if (newline < 0) {
-        const width = Math.max(7.2, text.length * 7.2);
-        return Math.max(18, Math.ceil(width / available) * 18);
-    }
-    const lines = text.split("\n");
-    if (lines.length > 1 && lines.at(-1) === "") lines.pop();
-    let height = 0;
-    for (const line of lines) {
-        const width = Math.max(7.2, line.length * 7.2);
-        height += Math.max(1, Math.ceil(width / available)) * 18;
-    }
+    for (const line of lines)
+        height += runHeight(line, `12px ${MONO_FAMILY}`, 18, measure, measurementCache);
     return Math.max(18, height);
 }
 function cacheReady(cache: MessageTextLayoutCache): MessageTextLayoutCache {
@@ -659,6 +638,13 @@ function markdownInlineHeight(
     task = false,
     suffixText = "",
 ): number {
+    if (
+        !markdownInlineHasLineBox(children) &&
+        trailingExtraWidth === 0 &&
+        !task &&
+        suffixText.length === 0
+    )
+        return 0;
     const runs = markdownInlineRuns(
         children,
         style,
@@ -674,6 +660,25 @@ function markdownInlineHeight(
         0,
     );
     return height;
+}
+
+/** Empty cells have padding but no line box. Mirror the rendered inline tree:
+ * skipped HTML and collapsed ASCII whitespace do not create one, whereas code
+ * decoration, images-as-labels, references and explicit breaks do. */
+function markdownInlineHasLineBox(children: readonly MarkdownPhrasing[]): boolean {
+    return children.some((node) => {
+        if (node.type === "html") return false;
+        if (node.type === "text") return /[^\t\n\r ]/u.test(node.value);
+        if (
+            node.type === "inlineCode" ||
+            node.type === "break" ||
+            node.type === "image" ||
+            node.type === "imageReference" ||
+            node.type === "footnoteReference"
+        )
+            return true;
+        return markdownInlineHasLineBox(node.children);
+    });
 }
 
 /** Height of one ordinary UI-font run at an explicit type ramp and measure. */
@@ -819,16 +824,21 @@ function markdownBlocksHeight(
                 mermaidEnabled,
             ),
         )
-        .filter((block) => block.height > 0);
-    const first = blocks[0];
-    if (!first) return 0;
-    let total = first.height + first.marginTop;
-    for (let index = 1; index < blocks.length; index += 1) {
-        const previous = blocks[index - 1]!;
-        const block = blocks[index]!;
-        total += Math.max(previous.marginBottom, gap, block.marginTop) + block.height;
+        .filter((block) => block !== undefined);
+    let total = 0;
+    let pendingMargin = 0;
+    for (const [index, block] of blocks.entries()) {
+        pendingMargin = Math.max(pendingMargin, index > 0 ? gap : 0, block.marginTop);
+        if (block.height === 0) {
+            // Empty block margins collapse through the element, rather than
+            // adding another paragraph gap before the next painted block.
+            pendingMargin = Math.max(pendingMargin, block.marginBottom);
+            continue;
+        }
+        total += pendingMargin + block.height;
+        pendingMargin = block.marginBottom;
     }
-    return total + blocks[blocks.length - 1]!.marginBottom;
+    return total + pendingMargin;
 }
 function markdownListHeight(
     list: MarkdownList,
@@ -854,10 +864,15 @@ function markdownListHeight(
                     mermaidEnabled,
                 ),
             )
-            .filter((block) => block.height > 0);
+            .filter((block) => block !== undefined);
         const first = blocks[0];
         if (itemIndex > 0) total += LIST_ITEM_GAP;
-        if (!first) continue;
+        if (!first) {
+            // The list marker creates a body line even before the item's
+            // first text node arrives (for example a streamed "1. ").
+            total += PARAGRAPH_LINE;
+            continue;
+        }
         let itemHeight = first.height;
         for (let index = 1; index < blocks.length; index += 1) {
             /* Tight-list paragraphs render as bare phrasing inside `<li>`, not
@@ -906,7 +921,7 @@ function markdownBlockHeight(
     task: boolean,
     mermaidEnabled: boolean,
     suffixText = "",
-): Block {
+): Block | undefined {
     if (node.type === "paragraph") {
         const extraWidth =
             trailing !== undefined && node.position?.end.offset === trailing.endOffset
@@ -953,8 +968,22 @@ function markdownBlockHeight(
             marginBottom: codeMargins ? CODE_GAP : 0,
         };
     }
-    if (node.type === "table")
-        return flow(node.children.length * (PARAGRAPH_LINE + TABLE_CELL_PADDING * 2));
+    if (node.type === "table") {
+        const columns = node.children[0]?.children.length ?? 0;
+        return flow(
+            node.children.reduce(
+                (total, row) =>
+                    total +
+                    TABLE_CELL_PADDING * 2 +
+                    (row.children
+                        .slice(0, columns)
+                        .some((cell) => markdownInlineHasLineBox(cell.children))
+                        ? PARAGRAPH_LINE
+                        : 0),
+                0,
+            ),
+        );
+    }
     if (node.type === "thematicBreak") return flow(RULE_HEIGHT);
     if (node.type === "blockquote")
         return flow(
@@ -971,10 +1000,10 @@ function markdownBlockHeight(
         );
     if (node.type === "list")
         return flow(markdownListHeight(node, measure, cache, footnotes, trailing, mermaidEnabled));
-    /* Definitions and raw HTML do not create rendered message boxes without a
-       raw-HTML transform. Any future AST node starts at zero until its renderer
-       receives an explicit geometry contract. */
-    return flow(0);
+    /* Definitions and skipped HTML create no DOM box. That is distinct from
+       an empty heading/paragraph: its zero-height element still participates
+       in the CSS sibling-margin sequence while the next token is arriving. */
+    return undefined;
 }
 function markdownFootnoteBackrefs(count: number): string {
     let text = "";
@@ -1008,7 +1037,7 @@ function markdownFootnoteDefinitionHeight(
                 node === last && suffixAttached ? suffix : "",
             ),
         )
-        .filter((block) => block.height > 0);
+        .filter((block) => block !== undefined);
     const first = blocks[0];
     let total = first?.height ?? 0;
     for (let index = 1; index < blocks.length; index += 1)
@@ -1047,9 +1076,9 @@ function markdownFootnotesHeight(
  * Painted height of a Markdown message body wrapped at `measure` px. Adjacent
  * block margins collapse to the larger of the two, exactly as they do in flow,
  * and only a block carrying its own margin (fenced code) contributes one at the
- * body's outer edges. An empty body still occupies one line box, matching the
- * anchor paragraph a streaming reply keeps so an empty generation cannot
- * collapse its row.
+ * body's outer edges. An empty source string occupies one line box, matching
+ * the anchor paragraph a generation keeps before text arrives. Nonempty source
+ * that renders empty syntax (such as `##`) keeps its actual zero-height box.
  */
 export function markdownBodyHeight(
     text: string,
@@ -1059,8 +1088,11 @@ export function markdownBodyHeight(
     mermaidEnabled = true,
     streaming = false,
 ): number {
-    if (streaming) return streamingMarkdownBodyHeight(text, measure, trailingExtraWidth);
-    const ready = cacheReady(cache);
+    /* A virtual row's size is authoritative even while it streams. Bound the
+       lifetime of prefix layout, not its accuracy: use the same Markdown/font
+       model in a scratch cache that cannot accumulate in settled history. The
+       row-height cache still reuses the result for an unchanged entry/width. */
+    const ready = cacheReady(streaming ? messageTextLayoutCacheCreate() : cache);
     let byMeasure = ready.markdownHeights[text];
     if (!byMeasure) {
         byMeasure = dictionaryCreate();
@@ -1091,45 +1123,11 @@ export function markdownBodyHeight(
         contentHeight +
         (contentHeight > 0 && footnotesHeight > 0 ? BLOCK_GAP : 0) +
         footnotesHeight;
-    const painted = height > 0 ? height : PARAGRAPH_LINE;
+    const painted = text.length === 0 ? PARAGRAPH_LINE : height;
     byMeasure[measureKey] = painted;
     return painted;
 }
 
-/**
- * Cheap provisional geometry for a live assistant message. A running message
- * changes its source on every token, so parsing/laying out every prefix is both
- * wasted work and an unbounded cache key stream. The finalized message is
- * measured by `markdownBodyHeight` on the next settled pass.
- */
-function streamingMarkdownBodyHeight(
-    text: string,
-    measure: number,
-    trailingExtraWidth: number,
-): number {
-    if (measure <= 0 || text.length === 0) return PARAGRAPH_LINE;
-    const newline = text.indexOf("\n");
-    if (newline < 0) {
-        const available = Math.max(1, measure - trailingExtraWidth);
-        const width = Math.max(8, text.length * 8);
-        return Math.max(PARAGRAPH_LINE, Math.ceil(width / available) * PARAGRAPH_LINE);
-    }
-    const lines = text.split("\n");
-    let height = 0;
-    for (let index = 0; index < lines.length; index += 1) {
-        const available =
-            index === lines.length - 1
-                ? Math.max(1, measure - trailingExtraWidth)
-                : Math.max(1, measure);
-        // Eight px is a deliberately conservative average for the 16px UI
-        // ramp. Overestimating while streaming avoids a second correction when
-        // Markdown punctuation becomes a wrapped line; the settled pass is
-        // exact and repairs the estimate if necessary.
-        const width = Math.max(8, lines[index]!.length * 8);
-        height += Math.max(1, Math.ceil(width / available)) * PARAGRAPH_LINE;
-    }
-    return Math.max(PARAGRAPH_LINE, height);
-}
 /** Painted height of a service line's 13px copy wrapped at `measure` px. */
 export function noticeTextHeight(
     text: string,
