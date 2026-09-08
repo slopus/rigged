@@ -558,6 +558,38 @@ function projectWorkspace(
     };
 }
 
+/**
+ * Whether replacing an agent changes anything the project/bot catalog projects.
+ *
+ * A running agent advances `updatedAt` for every streamed event, while the
+ * catalog needs that timestamp only once the agent is idle again. Publishing
+ * every intermediate timestamp makes unrelated directory and sidebar readers
+ * reconcile once per token. The focused session still receives the complete
+ * agent through its own subscription; the transition back to idle publishes
+ * the newest timestamp to the catalog.
+ *
+ * Keep this comparison beside `projectAgent`: every agent field projected into
+ * `GroupSession` or `unreadOf` must be represented here.
+ */
+export function agentGroupProjectionChanged(previous: Agent, next: Agent): boolean {
+    const previousRunning = previous.status !== "idle";
+    const nextRunning = next.status !== "idle";
+    return (
+        previous.id !== next.id ||
+        previous.workspaceId !== next.workspaceId ||
+        previous.archivedAt !== next.archivedAt ||
+        previous.createdAt !== next.createdAt ||
+        previous.orderKey !== next.orderKey ||
+        previous.parentAgentId !== next.parentAgentId ||
+        previousRunning !== nextRunning ||
+        previous.subagents.running !== next.subagents.running ||
+        previous.title !== next.title ||
+        previous.unread?.reason !== next.unread?.reason ||
+        previous.unread?.since !== next.unread?.since ||
+        (!previousRunning && !nextRunning && previous.updatedAt !== next.updatedAt)
+    );
+}
+
 function projectAgent(
     agent: Agent,
     workspace: Workspace | undefined,
