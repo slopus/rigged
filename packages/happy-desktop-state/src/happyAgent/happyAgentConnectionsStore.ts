@@ -32,6 +32,10 @@ export function happyAgentConnectionsStoreCreate(
     };
     const listeners = new Set<() => void>();
     let controller: AbortController | undefined;
+    // The read in flight, if any. A fresh trigger replaces it rather than
+    // queueing behind it: a read that failed while the daemon was down is
+    // backing off, and the connection coming back must not wait that out.
+    let pending: AbortController | undefined;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let disposed = false;
     const publish = (next: HappyAgentConnectionsSnapshot): void => {
@@ -72,6 +76,23 @@ export function happyAgentConnectionsStoreCreate(
                 : "local",
         });
     };
+    const reconcileRequest = (parent: AbortSignal): void => {
+        pending?.abort();
+        const own = new AbortController();
+        pending = own;
+        const signal = AbortSignal.any([parent, own.signal]);
+        void reconcile(signal)
+            .catch((error: unknown) => {
+                if (!signal.aborted)
+                    publish({
+                        ...snapshot,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+            })
+            .finally(() => {
+                if (pending === own) pending = undefined;
+            });
+    };
     const start = (): void => {
         if (disposed || controller || listeners.size === 0) return;
         const active = new AbortController();
@@ -86,13 +107,13 @@ export function happyAgentConnectionsStoreCreate(
                 try {
                     if (input.kind === "error") throw input.error;
                     if (input.kind === "bootstrap" || input.kind === "reconcile")
-                        await reconcile(active.signal);
+                        reconcileRequest(active.signal);
                     else if (
                         (input.update.kind === "connected" && snapshot.error) ||
                         (input.update.kind === "event" &&
                             input.update.event.type === "connections.updated")
                     )
-                        await reconcile(active.signal);
+                        reconcileRequest(active.signal);
                 } catch (error) {
                     if (!active.signal.aborted)
                         publish({
@@ -116,6 +137,8 @@ export function happyAgentConnectionsStoreCreate(
             });
     };
     const stop = (): void => {
+        pending?.abort();
+        pending = undefined;
         controller?.abort();
         controller = undefined;
         if (retry) clearTimeout(retry);
