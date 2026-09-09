@@ -50,6 +50,7 @@
     border-radius: 17px;
     background: var(--rail-background);
     filter: blur(4px);
+    opacity: 0.8;
     pointer-events: none;
 }
 .happy-connections__rail > .happy-scroll-area {
@@ -58,11 +59,12 @@
     min-height: 0;
 }
 .happy-connections__footer {
-    /* Continues the sidebar footer's top separator across the rail. */
+    /* Reserves the sidebar footer's 40px lane so the tile list ends on the same
+       line, but draws no hairline: the footer separator belongs to the sidebar
+       and stops at the rail's edge. */
     flex: none;
     height: 40px;
     box-sizing: border-box;
-    border-top: 1px solid var(--divider);
 }
 .happy-connections__items {
     display: flex;
