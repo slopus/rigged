@@ -1353,7 +1353,10 @@ function happyAgentProjectsSection(
 ): SidebarSection {
     return {
         id: happyAgentSectionId(happyAgent.id),
-        label: happyAgent.label,
+        // Which machine this is belongs to the connection rail and the window,
+        // not to a heading over the list: the heading names the kind of thing
+        // beneath it, the way "Bots" does above.
+        label: "Projects",
         items: happyAgent.projects
             .flatMap((project) =>
                 sidebarItems(
