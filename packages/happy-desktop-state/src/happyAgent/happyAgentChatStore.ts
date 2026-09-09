@@ -1033,6 +1033,37 @@ export function happyAgentChatStoreCreate(
             }),
         slashCommandInvoke: (name, argumentsValue) =>
             rejecting(() => {
+                // A skill is not a command the daemon runs on its own: it is a
+                // document the model has to read before it acts. So invoking one
+                // sends an ordinary user message that carries an explicit request
+                // for the `read_skill` tool. Happy Agent runs that tool before
+                // inference, records the call and its result in the transcript, and
+                // the model continues with the instructions loaded. The message text
+                // is the command as the reader typed it, so the transcript shows the
+                // invocation and the model reads the ask beside the loaded document.
+                const command = slashCommands.find((one) => one.name === name);
+                if (command?.kind === "skill") {
+                    const steered = runStatus === "running";
+                    const text =
+                        argumentsValue === undefined || argumentsValue.trim().length === 0
+                            ? `/${name}`
+                            : `/${name} ${argumentsValue}`;
+                    connectMutationTrack(
+                        deps.connectActions.sendMessage(sessionId, {
+                            text,
+                            content: [
+                                { type: "text", text },
+                                {
+                                    type: "tool_call_request",
+                                    name: "read_skill",
+                                    arguments: { name },
+                                },
+                            ],
+                        }),
+                    );
+                    output({ type: "messageSent", sessionId, steered });
+                    return;
+                }
                 connectMutationTrack(
                     deps.connectActions.invokeSlashCommand(sessionId, name, argumentsValue),
                 );

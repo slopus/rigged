@@ -693,8 +693,20 @@ export interface SendMessageInput {
     content?: readonly (
         | { type: "text"; text: string }
         | { type: "image"; mediaType: string; data: string }
+        | SendMessageToolCallRequest
     )[];
     text: string;
+}
+
+/**
+ * An explicit request for Happy Agent to execute one tool before inference,
+ * carried inside the user message that asks for it. The daemon runs it,
+ * records the call and its result, then lets the model continue.
+ */
+export interface SendMessageToolCallRequest {
+    type: "tool_call_request";
+    name: string;
+    arguments: Readonly<Record<string, string>>;
 }
 
 export interface DraftUpdate {

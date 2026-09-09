@@ -2605,11 +2605,18 @@ export function connectHappyAgent(options: ConnectHappyAgentOptions): HappyAgent
             const richContent = content.filter((block) => block.type !== "text");
             // The composer deliberately permits an image-only turn, while the
             // daemon's send contract requires non-empty display text. Happy Agent uses
-            // the image media types as the canonical display fallback.
+            // the image media types as the canonical display fallback; a tool
+            // request names the tool it asks for.
             const requestText =
                 input.text.trim().length > 0
                     ? input.text
-                    : richContent.map((block) => `[image:${block.mimeType}]`).join("");
+                    : richContent
+                          .map((block) =>
+                              block.type === "image"
+                                  ? `[image:${block.mimeType}]`
+                                  : `[tool:${block.name}]`,
+                          )
+                          .join("");
             // Always steer: a message sent mid-run interrupts the run rather
             // than waiting behind it, and on an idle agent the daemon treats
             // steer and queue identically.
