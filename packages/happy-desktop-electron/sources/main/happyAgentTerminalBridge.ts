@@ -51,6 +51,7 @@ export interface HappyAgentTerminalBridge {
 }
 
 interface TerminalRoute {
+    readonly connectionId?: string;
     readonly workspaceId: string;
     readonly terminalId: string;
 }
@@ -105,7 +106,9 @@ export function happyAgentTerminalBridgeCreate(
             }
             void (async () => {
                 const client = await options.client();
-                const daemon = await client.attachTerminal(claim.workspaceId, claim.terminalId);
+                const daemon = await (claim.connectionId
+                    ? client.attachTerminal(claim.workspaceId, claim.terminalId, claim.connectionId)
+                    : client.attachTerminal(claim.workspaceId, claim.terminalId));
                 if (socket.destroyed) {
                     daemon.destroy();
                     return;
@@ -156,7 +159,18 @@ function terminalClaim(prefix: string, requestUrl: string | undefined): Terminal
 
 /** Matches `/v0/workspaces/:workspaceId/terminals/:terminalId/attach` exactly. */
 function terminalRoute(path: string): TerminalRoute | undefined {
-    const parts = path.split("/").filter((part) => part.length > 0);
+    let parts = path.split("/").filter((part) => part.length > 0);
+    let connectionId: string | undefined;
+    if (
+        parts.length === 10 &&
+        parts[0] === "v0" &&
+        parts[1] === "connections" &&
+        parts[3] === "api"
+    ) {
+        connectionId = parts[2];
+        if (!connectionId || !/^[a-z][a-z0-9_-]{0,63}$/u.test(connectionId)) return undefined;
+        parts = parts.slice(4);
+    }
     if (
         parts.length !== 6 ||
         parts[0] !== "v0" ||
@@ -169,7 +183,7 @@ function terminalRoute(path: string): TerminalRoute | undefined {
         const workspaceId = decodeURIComponent(parts[2]!);
         const terminalId = decodeURIComponent(parts[4]!);
         if (!workspaceId || !terminalId) return undefined;
-        return { workspaceId, terminalId };
+        return { workspaceId, terminalId, ...(connectionId ? { connectionId } : {}) };
     } catch {
         return undefined;
     }

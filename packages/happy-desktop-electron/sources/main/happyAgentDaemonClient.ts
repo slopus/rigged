@@ -32,6 +32,7 @@ export const HAPPY_AGENT_TERMINAL_MAX_WIRE_BYTES = 4 * 1024 * 1024;
 export interface HappyAgentDaemonClientOptions {
     readonly socketPath: string;
     readonly token: string;
+    readonly connectionId?: string;
 }
 
 export interface HappyAgentDaemonPaths {
@@ -67,15 +68,32 @@ export class HappyAgentDaemonClient {
     readonly socketPath: string;
     readonly #token: string;
     readonly #client: HappyAgentClient;
+    readonly #connectionId?: string;
+    readonly #connections = new Map<string, HappyAgentDaemonClient>();
 
     constructor(options: HappyAgentDaemonClientOptions) {
         this.socketPath = options.socketPath;
         this.#token = options.token;
-        this.#client = new HappyAgentClient({
+        this.#connectionId = options.connectionId;
+        const client = new HappyAgentClient({
             endpoint: "http://happy-agent/",
             token: options.token,
             fetch: (input, init) => unixSocketFetch(options.socketPath, input, init),
         });
+        this.#client = options.connectionId ? client.connection(options.connectionId) : client;
+    }
+
+    connection(id: string): HappyAgentDaemonClient {
+        let client = this.#connections.get(id);
+        if (!client) {
+            client = new HappyAgentDaemonClient({
+                socketPath: this.socketPath,
+                token: this.#token,
+                connectionId: id,
+            });
+            this.#connections.set(id, client);
+        }
+        return client;
     }
 
     health(signal?: AbortSignal): Promise<HealthResponse> {
@@ -250,8 +268,21 @@ export class HappyAgentDaemonClient {
      * The workspace and terminal IDs are already authoritative `/v0`
      * identities; main performs no session lookup or legacy route projection.
      */
-    attachTerminal(workspaceId: string, terminalId: string): Promise<Duplex> {
-        const path = `/v0/workspaces/${encodeURIComponent(
+    attachTerminal(
+        workspaceId: string,
+        terminalId: string,
+        connectionId?: string,
+    ): Promise<Duplex> {
+        const remote = connectionId ?? this.#connectionId;
+        // The SDK validates the connection ID and owns the proxy prefix.
+        const prefix = remote
+            ? new URL(
+                  this.#connectionId === remote
+                      ? this.#client.endpoint
+                      : this.#client.connection(remote).endpoint,
+              ).pathname.replace(/\/$/u, "")
+            : "";
+        const path = `${prefix}/v0/workspaces/${encodeURIComponent(
             workspaceId,
         )}/terminals/${encodeURIComponent(terminalId)}/attach`;
         return new Promise((resolvePromise, reject) => {

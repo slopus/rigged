@@ -26,7 +26,7 @@ const WRITE_SETTLE_MS = 250;
  * they connect to has no opinion about it. It also has to survive a Happy Agent going
  * away, which anything kept inside a connection would not.
  */
-function persistenceCreate(): HappyAgentViewPreferencesPersistence {
+function persistenceCreate(key: string): HappyAgentViewPreferencesPersistence {
     let pending: HappyAgentViewPreferencesDocument | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -36,7 +36,7 @@ function persistenceCreate(): HappyAgentViewPreferencesPersistence {
         pending = undefined;
         if (!document) return;
         try {
-            localStorage.setItem(VIEW_PREFERENCES_KEY, JSON.stringify(document));
+            localStorage.setItem(key, JSON.stringify(document));
         } catch {
             // A storage-denied renderer still keeps the arrangement on screen for
             // as long as this window stays open.
@@ -60,7 +60,7 @@ function persistenceCreate(): HappyAgentViewPreferencesPersistence {
     return {
         read() {
             try {
-                const value = localStorage.getItem(VIEW_PREFERENCES_KEY);
+                const value = localStorage.getItem(key);
                 return value ? (JSON.parse(value) as HappyAgentViewPreferencesDocument) : undefined;
             } catch {
                 return undefined;
@@ -82,8 +82,16 @@ function persistenceCreate(): HappyAgentViewPreferencesPersistence {
  * connection would race its siblings' writes and add a listener per Happy Agent that
  * ever connected.
  */
-let shared: HappyAgentViewPreferencesPersistence | undefined;
-export function desktopViewPreferencesPersistence(): HappyAgentViewPreferencesPersistence {
-    shared ??= persistenceCreate();
-    return shared;
+const shared = new Map<string, HappyAgentViewPreferencesPersistence>();
+export function desktopViewPreferencesPersistence(
+    id = "local",
+): HappyAgentViewPreferencesPersistence {
+    let persistence = shared.get(id);
+    if (!persistence) {
+        persistence = persistenceCreate(
+            id === "local" ? VIEW_PREFERENCES_KEY : `${VIEW_PREFERENCES_KEY}:${id}`,
+        );
+        shared.set(id, persistence);
+    }
+    return persistence;
 }

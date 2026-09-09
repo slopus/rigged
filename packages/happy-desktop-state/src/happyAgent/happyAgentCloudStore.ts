@@ -11,6 +11,8 @@ import {
 import { createStore } from "zustand/vanilla";
 import type { UserError } from "../types.js";
 import { happyAgentUserError } from "./happyAgentSupport.js";
+import { happyAgentSyncRead } from "../happyAgentConnection/happyAgentSyncRead.js";
+import type { HappyAgentSync } from "../happyAgentConnection/happyAgentSync.js";
 
 export type HappyAgentCloudStatus =
     | "loading"
@@ -121,16 +123,16 @@ export interface HappyAgentCloudHost {
 }
 
 export interface HappyAgentCloudStoreDeps {
+    readonly sync: HappyAgentSync;
     readonly client: Pick<
         HappyAgentClient,
         | "completeCloudAuthorization"
         | "disconnectCloud"
         | "enrollCloudProfile"
         | "getCloudKeyBackup"
-        | "getDesktopBootstrap"
+        | "getCloud"
         | "getCloudSocial"
         | "startCloudAuthorization"
-        | "updates"
     >;
     readonly host: HappyAgentCloudHost;
 }
@@ -271,29 +273,42 @@ export function happyAgentCloudStoreCreate(deps: HappyAgentCloudStoreDeps): Happ
     };
 
     const follow = async (active: AbortController): Promise<void> => {
-        for (;;) {
-            const bootstrap = await deps.client.getDesktopBootstrap({ signal: active.signal });
-            if (active.signal.aborted) return;
-            if (!bootstrap.cloud) {
-                store.setState({ ...EMPTY, status: "unavailable" }, true);
-                return;
-            }
-            cloudAdopt(bootstrap.cloud);
-            if (bootstrap.cloudSocial) store.setState(socialProject(bootstrap.cloudSocial), false);
-            else if (bootstrap.cloud.status === "connected") socialEnrollmentRead(active.signal);
-
-            let reconcile = false;
-            for await (const update of deps.client.updates({
-                after: bootstrap.cursor,
-                signal: active.signal,
-            })) {
-                if (update.kind === "state_lost") {
-                    reconcile = true;
-                    break;
+        const cloudRead = () =>
+            happyAgentSyncRead(
+                active.signal,
+                () => deps.client.getCloud({ signal: active.signal }),
+                (error) => store.setState({ error: happyAgentUserError(error) }, false),
+            );
+        for await (const input of deps.sync.follow({
+            signal: active.signal,
+            events: ["cloud.updated", "cloud.social.updated"],
+        })) {
+            try {
+                if (input.kind === "error") throw input.error;
+                if (input.kind === "bootstrap" || input.kind === "reconcile") {
+                    const cloud =
+                        input.kind === "bootstrap"
+                            ? input.bootstrap.cloud
+                            : (await cloudRead()).cloud;
+                    if (active.signal.aborted) return;
+                    if (input.kind === "bootstrap") {
+                        version = undefined;
+                        ++socialRequest;
+                    }
+                    if (!cloud) {
+                        store.setState({ ...EMPTY, status: "unavailable" }, true);
+                        continue;
+                    }
+                    cloudAdopt(cloud);
+                    if (input.kind === "bootstrap" && input.bootstrap.cloudSocial)
+                        store.setState(socialProject(input.bootstrap.cloudSocial), false);
+                    else if (cloud.status === "connected") socialEnrollmentRead(active.signal);
+                    continue;
                 }
-                if (update.kind === "daemon_started" && update.replaced) {
-                    reconcile = true;
-                    break;
+                const update = input.update;
+                if (update.kind === "connected" && store.getState().error) {
+                    const response = await cloudRead();
+                    if (!active.signal.aborted) cloudAdopt(response.cloud);
                 }
                 if (update.kind === "event") {
                     if (update.event.type === "cloud.updated")
@@ -301,10 +316,10 @@ export function happyAgentCloudStoreCreate(deps: HappyAgentCloudStoreDeps): Happ
                     if (update.event.type === "cloud.social.updated")
                         socialEnrollmentRead(active.signal);
                 }
+            } catch (error) {
+                if (!active.signal.aborted)
+                    store.setState({ error: happyAgentUserError(error) }, false);
             }
-            if (active.signal.aborted) return;
-            if (!reconcile) throw new Error("Happy Social authentication updates stopped.");
-            version = undefined;
         }
     };
 

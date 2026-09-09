@@ -1,7 +1,6 @@
 import type { LocalOnboardingAssistant, LocalOnboardingView } from "happy-desktop-ui";
 import {
     HappyAgentClient,
-    happyMobileOnboardingStoreCreate,
     type HappyMobileOnboardingSnapshot,
     type HappyMobileOnboardingStore,
 } from "happy-desktop-state";
@@ -57,11 +56,13 @@ export interface LocalOnboardingStore {
 }
 
 export interface LocalOnboardingStoreOptions {
+    /** The local connection owns mobile setup and its shared realtime transport. */
+    readonly happyMobile: {
+        get(): HappyMobileOnboardingStore | undefined;
+        subscribe(listener: () => void): () => void;
+    };
     /** True when the welcome was acknowledged before this window opened. */
     readonly agentSetupActive?: boolean;
-    /** True after this app installation explicitly dismissed mobile pairing. */
-    readonly happyMobileSkipped?: boolean;
-    readonly onHappyMobileSkip?: () => void;
 }
 
 const downloadRetryMinimumMs = 3_000;
@@ -81,7 +82,7 @@ const startRetryMaximumMs = 30_000;
  */
 export function localOnboardingStoreCreate(
     bridge: HappyDesktopBridge,
-    options: LocalOnboardingStoreOptions = {},
+    options: LocalOnboardingStoreOptions,
 ): LocalOnboardingStore {
     const listeners = new Set<() => void>();
     let snapshot: LocalOnboardingViewSnapshot = {
@@ -106,10 +107,9 @@ export function localOnboardingStoreCreate(
     let verificationAbort: AbortController | undefined;
     let happyMobileStore: HappyMobileOnboardingStore | undefined;
     let happyMobileUnsubscribe: (() => void) | undefined;
-    let happyMobileKey: string | undefined;
+    let happyMobileSourceUnsubscribe: (() => void) | undefined;
     let inFlight = 0;
     let agentSetupActive = options.agentSetupActive === true;
-    let happyMobileSkipped = options.happyMobileSkipped === true;
 
     const publish = (next: LocalOnboardingViewSnapshot) => {
         snapshot = next;
@@ -283,7 +283,6 @@ export function localOnboardingStoreCreate(
         happyMobileUnsubscribe?.();
         happyMobileUnsubscribe = undefined;
         happyMobileStore = undefined;
-        happyMobileKey = undefined;
         if (snapshot.happyMobile) publish({ ...snapshot, happyMobile: undefined });
     };
 
@@ -301,23 +300,10 @@ export function localOnboardingStoreCreate(
             happyMobileStop();
             return;
         }
-        const key = `${String(runtime.connectionId)}|${runtime.activeTarget.happyAgentHttpUrl}`;
-        if (happyMobileKey === key) return;
-
+        const store = options.happyMobile.get();
+        if (happyMobileStore === store) return;
         happyMobileStop();
-        const store = happyMobileOnboardingStoreCreate({
-            client: new HappyAgentClient({
-                endpoint: runtime.activeTarget.happyAgentHttpUrl,
-                token: "happy-local-capability",
-            }),
-            initialSkipped: happyMobileSkipped,
-            onOutput(output) {
-                if (output.type !== "happyMobileSkipped") return;
-                happyMobileSkipped = true;
-                options.onHappyMobileSkip?.();
-            },
-        });
-        happyMobileKey = key;
+        if (!store) return;
         happyMobileStore = store;
         publish({ ...snapshot, happyMobile: store.get() });
         happyMobileUnsubscribe = store.subscribe(() => {
@@ -412,6 +398,8 @@ export function localOnboardingStoreCreate(
         subscribe(listener) {
             listeners.add(listener);
             if (listeners.size === 1) {
+                happyMobileSourceUnsubscribe =
+                    options.happyMobile.subscribe(happyMobileSynchronize);
                 eventReceived = false;
                 bridgeUnsubscribe = bridge.onboardingSubscribe((next) => {
                     eventReceived = true;
@@ -471,6 +459,8 @@ export function localOnboardingStoreCreate(
                 daemonUnsubscribe = undefined;
                 runtimeUnsubscribe?.();
                 runtimeUnsubscribe = undefined;
+                happyMobileSourceUnsubscribe?.();
+                happyMobileSourceUnsubscribe = undefined;
                 verificationAbort?.abort();
                 verificationAbort = undefined;
                 happyMobileStop();

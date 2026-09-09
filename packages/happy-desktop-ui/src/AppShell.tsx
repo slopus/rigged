@@ -38,6 +38,14 @@ export type AppShellProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
      */
     windowFullScreen?: boolean;
     /**
+     * A connection rail stands between the window's left edge and this shell,
+     * holding the traffic lights' lane itself. The chrome inset closes exactly
+     * as in full screen, but the window is still a window: with the lights
+     * beside it rather than gone, an empty sidebar heading folds away and the
+     * toggle shares the first row's line.
+     */
+    connectionRail?: boolean;
+    /**
      * Enables the left sidebar show/hide toggle and pointer/keyboard resize. When
      * omitted the sidebar keeps its fixed `clamp(250px, 30vw, 360px)` contract and
      * renders no interaction chrome, so existing callers are unaffected.
@@ -49,6 +57,14 @@ export type AppShellProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
     sidebarMaxWidth?: number;
     /** Start collapsed. The sidebar DOM stays mounted; only its box is hidden. */
     sidebarDefaultCollapsed?: boolean;
+    /**
+     * Controlled collapse: the caller owns whether the sidebar is folded away
+     * and hears every request to change it — the toggle, the reveal control,
+     * and Command-B all go through `onSidebarCollapsedChange`. Omit it and
+     * AppShell keeps the fold itself, seeded by `sidebarDefaultCollapsed`.
+     */
+    sidebarCollapsed?: boolean;
+    onSidebarCollapsedChange?: (collapsed: boolean) => void;
     sidebarCollapseLabel?: string;
     sidebarExpandLabel?: string;
     sidebarResizeLabel?: string;
@@ -319,11 +335,14 @@ export function AppShell(props: AppShellProps) {
         "titleBar",
         "windowControls",
         "windowFullScreen",
+        "connectionRail",
         "sidebarCollapsible",
         "sidebarDefaultWidth",
         "sidebarMinWidth",
         "sidebarMaxWidth",
         "sidebarDefaultCollapsed",
+        "sidebarCollapsed",
+        "onSidebarCollapsedChange",
         "sidebarCollapseLabel",
         "sidebarExpandLabel",
         "sidebarResizeLabel",
@@ -355,9 +374,16 @@ export function AppShell(props: AppShellProps) {
     // worked out below, once the lane opposite has a width to be measured by.
     const sidebarCap = local.sidebarMaxWidth ?? SIDEBAR_MAX_WIDTH;
     const panelCap = local.panelMaxWidth ?? panelShareOf();
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    const [sidebarCollapsedLocal, setSidebarCollapsedLocal] = useState(
         local.sidebarDefaultCollapsed ?? false,
     );
+    const sidebarCollapsedControlled = local.sidebarCollapsed !== undefined;
+    const sidebarCollapsed = local.sidebarCollapsed ?? sidebarCollapsedLocal;
+    const onSidebarCollapsedChange = local.onSidebarCollapsedChange;
+    const setSidebarCollapsed = (collapsed: boolean) => {
+        if (!sidebarCollapsedControlled) setSidebarCollapsedLocal(collapsed);
+        onSidebarCollapsedChange?.(collapsed);
+    };
     const [sidebarWidth, setSidebarWidth] = useState(() =>
         clamp(local.sidebarDefaultWidth ?? SIDEBAR_DEFAULT_WIDTH, sidebarMin, sidebarCap),
     );
@@ -444,7 +470,8 @@ export function AppShell(props: AppShellProps) {
             )
                 return;
             event.preventDefault();
-            setSidebarCollapsed((collapsed) => !collapsed);
+            if (!sidebarCollapsedControlled) setSidebarCollapsedLocal(!sidebarCollapsed);
+            onSidebarCollapsedChange?.(!sidebarCollapsed);
         };
         const onKeyUp = (event: KeyboardEvent) => {
             if (event.key !== "Meta") return;
@@ -472,7 +499,13 @@ export function AppShell(props: AppShellProps) {
             window.removeEventListener("pointerdown", onPointerDown);
             document.removeEventListener("visibilitychange", onVisibilityChange);
         };
-    }, [shortcutHintsInteractive, sidebarInteractive]);
+    }, [
+        onSidebarCollapsedChange,
+        shortcutHintsInteractive,
+        sidebarCollapsed,
+        sidebarCollapsedControlled,
+        sidebarInteractive,
+    ]);
     const panelResizable = local.panelResizable === true;
     // Controlled when a resizable panel is given a width; otherwise AppShell owns it.
     const panelWidthControlled = panelResizable && local.panelWidth !== undefined;
@@ -608,6 +641,7 @@ export function AppShell(props: AppShellProps) {
                 data-sidebar-collapsed={sidebarHidden ? "" : undefined}
                 data-window-controls={local.windowControls ? "" : undefined}
                 data-window-full-screen={local.windowFullScreen ? "" : undefined}
+                data-connection-rail={local.connectionRail ? "" : undefined}
                 onFocusCapture={(event) => {
                     rest.onFocusCapture?.(event);
                     paneFocusRead(event.currentTarget, event.target);

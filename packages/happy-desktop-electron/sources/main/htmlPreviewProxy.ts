@@ -14,7 +14,11 @@ export interface HtmlPreviewProxyHandle {
      * every asset through the workspace-rooted `/v0` file API.
      */
     register(client: HappyAgentProxyClient): {
-        readonly workspace: (workspaceId: string, filePath: string) => string;
+        readonly workspace: (
+            workspaceId: string,
+            filePath: string,
+            connectionId?: string,
+        ) => string;
     };
     close(): void;
 }
@@ -85,6 +89,7 @@ const PREVIEW_SITE_LIMIT = 32;
 /** One isolated preview origin backed by a Happy Agent workspace folder. */
 interface PreviewSite {
     readonly client: HappyAgentProxyClient;
+    readonly connectionId?: string;
     readonly workspaceId: string;
     readonly directory: string;
 }
@@ -183,16 +188,18 @@ export function htmlPreviewProxyCreate(): Promise<HtmlPreviewProxyHandle> {
                         }
                     };
                     return {
-                        workspace: (workspaceId, filePath) => {
+                        workspace: (workspaceId, filePath, connectionId) => {
                             const site = previewSite(filePath);
                             const name = siteName(
                                 registration,
+                                connectionId ?? "",
                                 "workspace",
                                 workspaceId,
                                 site.directory,
                             );
                             remember(name, {
                                 client,
+                                ...(connectionId ? { connectionId } : {}),
                                 workspaceId,
                                 directory: site.directory,
                             });
@@ -271,7 +278,11 @@ async function serve(
     let bytes: Buffer;
     try {
         const filePath = site.directory === "" ? within : `${site.directory}/${within}`;
-        const file = await workspaceFileLoad(site.client, site.workspaceId, filePath);
+        const client = site.connectionId
+            ? site.client.connection?.(site.connectionId)
+            : site.client;
+        if (!client) throw new Error("Remote previews are unavailable.");
+        const file = await workspaceFileLoad(client, site.workspaceId, filePath);
         bytes = Buffer.from(file.content, "base64");
     } catch {
         // A file the checkout no longer holds and a file this page may not

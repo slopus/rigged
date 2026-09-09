@@ -1,8 +1,14 @@
+import {
+    HappyAgentClient,
+    happyAgentConnectionsStoreCreate,
+    type HappyAgentConnectionsStore,
+} from "happy-desktop-state";
 import type {
     HappyAgentBot,
     HappyAgentConnectionSnapshot,
     HappyAgentHost,
     HappyAgentModelPreferencePersistence,
+    HappyAgentCloudHost,
     HappyAgentProjectAddSnapshot,
     HappyAgentProjectGroup,
     HappyAgentSessionLocation,
@@ -22,6 +28,7 @@ const PROJECT_ADD_IDLE: HappyAgentProjectAddSnapshot = { pending: false };
 
 export interface HappyAgentDirectoryEntry {
     readonly id: string;
+    readonly remoteId?: string;
     readonly label: string;
     readonly status: "connecting" | "connected" | "disconnected" | "error";
     readonly protocolMismatch?: HappyAgentProtocolMismatch;
@@ -38,6 +45,7 @@ export interface HappyAgentDirectoryEntry {
 export interface HappyAgentDirectorySnapshot {
     readonly activeHappyAgentId?: string;
     readonly happyAgents: readonly HappyAgentDirectoryEntry[];
+    readonly error?: string;
 }
 
 export interface HappyAgentDirectoryStore {
@@ -47,6 +55,7 @@ export interface HappyAgentDirectoryStore {
 }
 
 export interface HappyAgentDirectoryDeps {
+    readonly cloudHostFor: (id: string) => HappyAgentCloudHost;
     readonly conversationOpen: (happyAgentId: string, location: HappyAgentSessionLocation) => void;
     readonly groupOpen: (happyAgentId: string, groupId: string) => void;
     /**
@@ -56,7 +65,17 @@ export interface HappyAgentDirectoryDeps {
      */
     readonly groupForget: (happyAgentId: string, groupId: string) => void;
     /** Desktop-wide model memory for this window's Happy Agent connection. */
-    readonly modelPreferencePersistence: HappyAgentModelPreferencePersistence;
+    readonly modelPreferencePersistence: (id: string) => HappyAgentModelPreferencePersistence;
+    /**
+     * Whether the local daemon is mid-restart. Remote connections are proxied
+     * through it, and a restarting daemon comes back reporting an empty
+     * connection registry for a beat before it repopulates. That empty read is
+     * not a real removal, so while it is true the last-known remotes are kept
+     * mounted — they show their own disconnected state — rather than being pruned
+     * and taking the connection rail and every remote workspace down with them.
+     * Absent on a host with no managed daemon, which never restarts one.
+     */
+    readonly localRestarting?: () => boolean;
     /**
      * The window's current appearance, read whenever a terminal is opened. A
      * terminal runs in the appearance it was started in for the rest of its life,
@@ -139,8 +158,8 @@ function connectionRead(
 }
 
 /**
- * The renderer now owns exactly one daemon: the local host. Connectivity may
- * change, but no peer discovery or remote connection is materialized here.
+ * Composes one ordinary connection per host-published entry. The state package
+ * owns membership and selection; this adapter supplies desktop capabilities.
  */
 export function happyAgentDirectoryStoreCreate(
     bridge: HappyDesktopBridge,
@@ -151,7 +170,7 @@ export function happyAgentDirectoryStoreCreate(
     const happyAgent: LocalHappyAgent = {
         entry: {
             id: LOCAL_HAPPY_AGENT_ID,
-            label: "Projects",
+            label: "This Mac",
             bots: [],
             projects: [],
             projectsStatus: "loading",
@@ -162,6 +181,9 @@ export function happyAgentDirectoryStoreCreate(
     let snapshot: HappyAgentDirectorySnapshot = { happyAgents: [] };
     let runtimeUnsubscribe: (() => void) | undefined;
     let browserOpenUnsubscribe: (() => void) | undefined;
+    const remotes = new Map<string, LocalHappyAgent>();
+    let roster: HappyAgentConnectionsStore | undefined;
+    let rosterUnsubscribe: (() => void) | undefined;
 
     const host: HappyAgentHost = {
         applicationMenuOpen: () => void bridge.applicationMenuOpen().catch(() => undefined),
@@ -170,13 +192,14 @@ export function happyAgentDirectoryStoreCreate(
 
     const publish = (): void => {
         snapshot = {
-            activeHappyAgentId: LOCAL_HAPPY_AGENT_ID,
-            happyAgents: [happyAgent.entry],
+            activeHappyAgentId: roster?.get().selectedId ?? LOCAL_HAPPY_AGENT_ID,
+            happyAgents: [happyAgent.entry, ...[...remotes.values()].map((remote) => remote.entry)],
+            ...(roster?.get().error ? { error: roster.get().error } : {}),
         };
         for (const listener of listeners) listener();
     };
 
-    const connectionClose = (): void => {
+    const connectionClose = (happyAgent: LocalHappyAgent): void => {
         happyAgent.connectionUnsubscribe?.();
         happyAgent.connectionUnsubscribe = undefined;
         happyAgent.workspaceUnsubscribe?.();
@@ -194,27 +217,34 @@ export function happyAgentDirectoryStoreCreate(
         };
     };
 
-    const connectionOpen = (happyAgentHttpUrl: string): void => {
-        connectionClose();
+    const connectionOpen = (
+        happyAgent: LocalHappyAgent,
+        client: HappyAgentClient,
+        hostServicesUrl: string,
+    ): void => {
+        const happyAgentHttpUrl = client.endpoint.replace(/\/$/u, "");
+        connectionClose(happyAgent);
         happyAgent.url = happyAgentHttpUrl;
         happyAgent.connection = happyAgentConnectionOpen({
-            cloudHost: {
-                cloudAuthCallbackSubscribe: (listener) =>
-                    bridge.cloudAuthCallbackSubscribe(listener),
-                cloudAuthCallbackTake: () => bridge.cloudAuthCallbackTake(),
-                cloudAuthConfigurationGet: () => bridge.cloudAuthConfigurationGet(),
-                cloudAuthOpen: (url) => bridge.cloudAuthOpen(url),
-            },
-            host,
-            happyAgentId: LOCAL_HAPPY_AGENT_ID,
+            cloudHost: deps.cloudHostFor(happyAgent.entry.id),
+            host: happyAgent.entry.remoteId
+                ? {
+                      projectSource: "repository",
+                      applicationMenuOpen: host.applicationMenuOpen,
+                      directoryPick: async () => undefined,
+                  }
+                : host,
+            happyAgentId: happyAgent.entry.id,
+            client,
+            hostServicesUrl,
             happyAgentHttpUrl,
-            modelPreferencePersistence: deps.modelPreferencePersistence,
+            modelPreferencePersistence: deps.modelPreferencePersistence(happyAgent.entry.id),
             terminalColorScheme: deps.terminalColorScheme,
             deps: {
                 conversationOpen: (location) =>
-                    deps.conversationOpen(LOCAL_HAPPY_AGENT_ID, location),
-                groupOpen: (groupId) => deps.groupOpen(LOCAL_HAPPY_AGENT_ID, groupId),
-                groupForget: (groupId) => deps.groupForget(LOCAL_HAPPY_AGENT_ID, groupId),
+                    deps.conversationOpen(happyAgent.entry.id, location),
+                groupOpen: (groupId) => deps.groupOpen(happyAgent.entry.id, groupId),
+                groupForget: (groupId) => deps.groupForget(happyAgent.entry.id, groupId),
                 compatibility: (mismatch) => {
                     if (happyAgent.protocolMismatch?.message === mismatch?.message) return;
                     happyAgent.protocolMismatch = mismatch;
@@ -344,7 +374,58 @@ export function happyAgentDirectoryStoreCreate(
                       }),
             version: target.happyAgentVersion,
         };
-        if (happyAgent.url !== target.happyAgentHttpUrl) connectionOpen(target.happyAgentHttpUrl);
+        const base = target.happyAgentHttpUrl.replace(/\/$/u, "");
+        if (happyAgent.url !== base) {
+            rosterUnsubscribe?.();
+            roster?.[Symbol.dispose]();
+            const client = new HappyAgentClient({
+                endpoint: base,
+                token: "happy-local-capability",
+            });
+            connectionOpen(happyAgent, client, base);
+            roster = happyAgentConnectionsStoreCreate(client, happyAgent.connection!.sync);
+            rosterUnsubscribe = roster.subscribe(() => {
+                const membership = roster!.get();
+                // A local restart takes the daemon down and brings it back with an
+                // empty registry for a beat. Pruning against that would collapse
+                // the rail and unmount every remote workspace, so known remotes
+                // are held through it and reconciled once the daemon reports its
+                // real membership again.
+                const localRestarting = deps.localRestarting?.() === true;
+                for (const [id, remote] of remotes) {
+                    if (membership.items.some((item) => item.id === id)) continue;
+                    if (localRestarting) continue;
+                    connectionClose(remote);
+                    remotes.delete(id);
+                }
+                for (const item of membership.items) {
+                    if (!item.remoteId) continue;
+                    let remote = remotes.get(item.id);
+                    if (!remote) {
+                        remote = {
+                            entry: {
+                                id: item.id,
+                                remoteId: item.remoteId,
+                                label: item.name,
+                                bots: [],
+                                projects: [],
+                                projectsStatus: "loading",
+                                projectAdd: PROJECT_ADD_IDLE,
+                                status: "connecting",
+                            },
+                        };
+                        remotes.set(item.id, remote);
+                        connectionOpen(
+                            remote,
+                            client.connection(item.remoteId),
+                            `${base}/connections/${item.remoteId}`,
+                        );
+                    } else if (remote.entry.label !== item.name)
+                        remote.entry = { ...remote.entry, label: item.name };
+                }
+                publish();
+            });
+        }
         publish();
     };
 
@@ -355,7 +436,9 @@ export function happyAgentDirectoryStoreCreate(
             if (listeners.size === 1) {
                 runtimeUnsubscribe = runtime.subscribe(localReconcile);
                 browserOpenUnsubscribe = bridge.browserOpenSubscribe((url) => {
-                    happyAgent.entry.session?.workspace.panel.browserAdd(url);
+                    snapshot.happyAgents
+                        .find((entry) => entry.id === snapshot.activeHappyAgentId)
+                        ?.session?.workspace.panel.browserAdd(url);
                 });
                 localReconcile();
             }
@@ -366,12 +449,18 @@ export function happyAgentDirectoryStoreCreate(
                 runtimeUnsubscribe = undefined;
                 browserOpenUnsubscribe?.();
                 browserOpenUnsubscribe = undefined;
-                connectionClose();
+                rosterUnsubscribe?.();
+                rosterUnsubscribe = undefined;
+                roster?.[Symbol.dispose]();
+                roster = undefined;
+                for (const remote of remotes.values()) connectionClose(remote);
+                remotes.clear();
+                connectionClose(happyAgent);
                 snapshot = { happyAgents: [] };
             };
         },
-        happyAgentActivate(_id) {
-            // There is one addressable Happy Agent, so every route resolves to it.
+        happyAgentActivate(id) {
+            roster?.connectionSelect(id);
         },
     };
 }

@@ -11,6 +11,8 @@ import {
 } from "@tanstack/react-router";
 import { happyAgentHistoryCreate, type HappyAgentRouterHistory } from "./happyAgentHistory";
 import { happyAgentRoutePathParse } from "./happyAgentRoute";
+import { useSyncExternalStore } from "react";
+import { HappyAgentOnboardingBoundary } from "../components/HappyAgentOnboardingBoundary";
 import type {
     AppearanceStore,
     CommandPaletteStore,
@@ -19,6 +21,7 @@ import type {
     HappyAgentFileTabKind,
     HappyAgentNavigationOrderStore,
     HappyAgentSidebarCollapseStore,
+    HappyAgentSidebarVisibilityStore,
     HappyAgentSessionId,
     HappyAgentSessionLocation,
     HappyAgentSettingsStore,
@@ -26,11 +29,12 @@ import type {
     HappyAgentWindowStore,
     HappyAgentWorkspaceStore,
 } from "happy-desktop-state";
-import type {
-    BrowserContentRenderer,
-    HtmlPreviewRenderer,
-    LivePerformanceStore,
-    MediaWindowOpener,
+import {
+    SplashScreen,
+    type BrowserContentRenderer,
+    type HtmlPreviewRenderer,
+    type LivePerformanceStore,
+    type MediaWindowOpener,
 } from "happy-desktop-ui";
 import {
     AppHappyAgentView,
@@ -56,6 +60,8 @@ import {
  * can be constructed before any Happy Agent connects.
  */
 export interface HappyAgentRouterContext {
+    /** A remote daemon uses its own setup inside this connection's router. */
+    readonly connectionOnboarding?: boolean;
     /** Native Chromium guest renderer, present only in packaged Electron. */
     readonly browserContent?: BrowserContentRenderer;
     /** Renders one HTML workspace file as a page, in a host that has an engine. */
@@ -88,6 +94,8 @@ export interface HappyAgentRouterContext {
      * Absent in a host that keeps no such record, which leaves every row open.
      */
     readonly sidebarCollapse?: HappyAgentSidebarCollapseStore;
+    /** Whether this window's left side is folded away; shared by every connection. */
+    readonly sidebarVisibility?: HappyAgentSidebarVisibilityStore;
     /**
      * Whether this window offers the features that are not finished yet. Absent
      * in a host that remembers no such choice, which withholds them.
@@ -118,8 +126,44 @@ export interface HappyAgentRouterContext {
 }
 
 const rootRoute = createRootRouteWithContext<HappyAgentRouterContext>()({
-    component: () => <Outlet />,
+    component: HappyAgentRoot,
 });
+
+function HappyAgentRoot() {
+    const context = useRouteContext({ strict: false }) as HappyAgentRouterContext;
+    if (!context.happyAgents) return null;
+    return <HappyAgentRootContent context={context} />;
+}
+
+function HappyAgentRootContent({ context }: { readonly context: HappyAgentRouterContext }) {
+    const directory = useSyncExternalStore(
+        context.happyAgents.subscribe,
+        context.happyAgents.get,
+        context.happyAgents.get,
+    );
+    const entry = directory.happyAgents[0];
+    // Sessions survive reconnects. Only the first connection gets a splash;
+    // an already materialized workspace must keep its mounted UI and drafts.
+    if (context.connectionOnboarding && !entry?.session)
+        return <SplashScreen note={`Connecting to ${entry?.label ?? "Happy Agent"}…`} />;
+    const onboarding = entry?.session?.onboarding;
+    const welcome = entry?.session?.welcome;
+    const profile = entry?.session?.profile?.();
+    if (!context.connectionOnboarding || !onboarding || !welcome || !profile || !entry?.session)
+        return <Outlet />;
+    return (
+        <HappyAgentOnboardingBoundary
+            store={onboarding}
+            welcome={welcome}
+            appearance={context.appearance}
+            profile={profile}
+            online={entry.status === "connected"}
+            onRetry={entry.session.connection.retry}
+        >
+            <Outlet />
+        </HappyAgentOnboardingBoundary>
+    );
+}
 
 /**
  * The Happy Agent a bare address lands on: the first one in the window, which is the
@@ -423,6 +467,7 @@ function HappyAgentWorkspaceLayout(
             {...(context.commandPalette ? { commandPalette: context.commandPalette } : {})}
             {...(context.navigationOrder ? { navigationOrder: context.navigationOrder } : {})}
             {...(context.sidebarCollapse ? { sidebarCollapse: context.sidebarCollapse } : {})}
+            {...(context.sidebarVisibility ? { sidebarVisibility: context.sidebarVisibility } : {})}
             createOpen={props.create}
             inboxOpen={props.inbox}
             socialOpen={props.social}

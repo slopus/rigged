@@ -44,7 +44,7 @@
         "clean": "rm -rf dist release"
     },
     "dependencies": {
-        "@slopus/happy-agent-client": "0.0.47",
+        "@slopus/happy-agent-client": "0.0.54",
         "electron-updater": "^6.8.9",
         "ws": "^8.21.1",
         "yjs": "^13.6.31"

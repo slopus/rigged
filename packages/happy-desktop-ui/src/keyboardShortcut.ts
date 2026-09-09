@@ -51,9 +51,9 @@ export function commandShortcutMatches(event: KeyboardEvent, shortcut: CommandSh
 
 /** Global workspace commands never act through a modal or an open custom menu. */
 export function windowShortcutBlocked(): boolean {
-    return (
-        document.querySelector(
+    return [
+        ...document.querySelectorAll<HTMLElement>(
             '[data-happy-desktop-ui="modal-overlay"], [role="dialog"], [role="menu"]',
-        ) !== null
-    );
+        ),
+    ].some((element) => element.getClientRects().length > 0);
 }

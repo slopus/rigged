@@ -39,7 +39,12 @@ export function mediaPreviewAddressAllowed(
         }
         if (root.origin !== address.origin) return false;
         const prefix = root.pathname.replace(/\/$/, "");
-        return prefix !== "" && address.pathname === `${prefix}${MEDIA_ROUTE}`;
+        if (prefix === "" || !address.pathname.startsWith(`${prefix}/`)) return false;
+        const route = address.pathname.slice(prefix.length);
+        return (
+            route === MEDIA_ROUTE ||
+            /^\/connections\/[a-z][a-z0-9_-]{0,63}\/workspace-file-media$/u.test(route)
+        );
     });
 }
 

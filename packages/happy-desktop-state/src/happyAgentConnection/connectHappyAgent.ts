@@ -26,6 +26,7 @@ import {
 import { createStore } from "zustand/vanilla";
 import { happyAgentServiceTierToWire } from "../happyAgentServiceTier.js";
 import { ChatStore } from "./ChatStore.js";
+import { happyAgentSyncCreate } from "./happyAgentSync.js";
 import { CHECKING_SERVER_COMPATIBILITY, serverCompatibility } from "./compatibility.js";
 import { projectRegistrationError } from "./errors.js";
 import { deepEqual } from "../happyAgent/happyAgentSupport.js";
@@ -163,6 +164,7 @@ interface PendingDraftSave extends DraftSave {
 }
 
 export function connectHappyAgent(options: ConnectHappyAgentOptions): HappyAgentConnection {
+    const sync = happyAgentSyncCreate();
     const client = options.client ?? new HappyAgentClient(options);
     const endpoint = options.endpoint.toString();
     const rootController = new AbortController();
@@ -862,6 +864,8 @@ export function connectHappyAgent(options: ConnectHappyAgentOptions): HappyAgent
             const bootstrap = await client.getDesktopBootstrap({
                 signal: deadlineSignal(SNAPSHOT_RESPONSE_TIMEOUT_MS),
             });
+            if (rootController.signal.aborted) return;
+            sync.writer.bootstrapReceived(bootstrap);
             const watchedGit = await optional(() =>
                 client.watchGit(
                     {
@@ -1821,6 +1825,7 @@ export function connectHappyAgent(options: ConnectHappyAgentOptions): HappyAgent
                     after: cursor,
                     signal: attemptSignal,
                 })) {
+                    sync.writer.updateReceived(update);
                     if (update.kind === "connected") {
                         reportDebug({
                             detail: debugDetail({ cursor: update.cursor }),
@@ -1915,6 +1920,7 @@ export function connectHappyAgent(options: ConnectHappyAgentOptions): HappyAgent
                 }
             } catch (error) {
                 if (rootController.signal.aborted) break;
+                sync.writer.errorReceived(error);
                 publishConnection(config === undefined ? "connecting" : "reconnecting");
                 if (!retryRequested) {
                     reportDebug({
@@ -2139,6 +2145,7 @@ export function connectHappyAgent(options: ConnectHappyAgentOptions): HappyAgent
 
     return {
         compatibility: () => compatibility,
+        sync: sync.source,
         retry: retryUpdates,
         connectGroups(subscription) {
             if (closed) throw new Error("This Happy Agent connection is closed.");
@@ -3091,6 +3098,7 @@ export function connectHappyAgent(options: ConnectHappyAgentOptions): HappyAgent
                 source: "connection",
             });
             rootController.abort();
+            sync.writer.close();
             updatesAttemptController?.abort();
             retryWake?.();
             retryWake = undefined;

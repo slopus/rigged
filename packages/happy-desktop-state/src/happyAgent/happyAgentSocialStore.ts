@@ -2,6 +2,8 @@ import type { CloudSocial, CloudSocialProfile, HappyAgentClient } from "@slopus/
 import { createStore } from "zustand/vanilla";
 import type { UserError } from "../types.js";
 import { happyAgentUserError } from "./happyAgentSupport.js";
+import { happyAgentSyncRead } from "../happyAgentConnection/happyAgentSyncRead.js";
+import type { HappyAgentSync } from "../happyAgentConnection/happyAgentSync.js";
 
 export interface HappyAgentSocialPerson {
     readonly firstName: string;
@@ -35,14 +37,13 @@ export interface HappyAgentSocialStore {
 }
 
 export interface HappyAgentSocialStoreDeps {
+    readonly sync: HappyAgentSync;
     readonly client: Pick<
         HappyAgentClient,
         | "approveCloudFriendRequest"
         | "getCloudSocial"
-        | "getDesktopBootstrap"
         | "rejectCloudFriendRequest"
         | "sendCloudFriendRequest"
-        | "updates"
     >;
 }
 
@@ -96,13 +97,11 @@ export function happyAgentSocialStoreCreate(
         );
     };
 
-    const socialRead = (signal?: AbortSignal): void => {
+    const socialRead = async (signal: AbortSignal): Promise<void> => {
         const request = ++readRequest;
-        void deps.client.getCloudSocial({ signal }).then(
-            (response) => {
-                if (disposed || signal?.aborted || request !== readRequest) return;
-                adopt(response.cloudSocial);
-            },
+        const response = await happyAgentSyncRead(
+            signal,
+            () => deps.client.getCloudSocial({ signal }),
             (error: unknown) => {
                 if (disposed || signal?.aborted || request !== readRequest) return;
                 const current = store.getState();
@@ -115,32 +114,28 @@ export function happyAgentSocialStoreCreate(
                 );
             },
         );
+        if (!disposed && !signal.aborted && request === readRequest) adopt(response.cloudSocial);
     };
 
     const follow = async (active: AbortController): Promise<void> => {
-        for (;;) {
-            const bootstrap = await deps.client.getDesktopBootstrap({ signal: active.signal });
-            if (active.signal.aborted) return;
-            if (bootstrap.cloudSocial) adopt(bootstrap.cloudSocial);
-            else socialRead(active.signal);
-
-            let reconcile = false;
-            for await (const update of deps.client.updates({
-                after: bootstrap.cursor,
-                signal: active.signal,
-            })) {
-                if (
-                    update.kind === "state_lost" ||
-                    (update.kind === "daemon_started" && update.replaced)
-                ) {
-                    reconcile = true;
-                    break;
-                }
+        for await (const input of deps.sync.follow({
+            signal: active.signal,
+            events: ["cloud.social.updated"],
+        })) {
+            if (input.kind === "error") {
+                store.setState({ error: happyAgentUserError(input.error) }, false);
+            } else if (input.kind === "bootstrap") {
+                ++readRequest;
+                if (input.bootstrap.cloudSocial) adopt(input.bootstrap.cloudSocial);
+                else await socialRead(active.signal);
+            } else if (input.kind === "reconcile") await socialRead(active.signal);
+            else {
+                const update = input.update;
+                if (update.kind === "connected" && store.getState().error)
+                    await socialRead(active.signal);
                 if (update.kind === "event" && update.event.type === "cloud.social.updated")
-                    socialRead(active.signal);
+                    await socialRead(active.signal);
             }
-            if (active.signal.aborted) return;
-            if (!reconcile) throw new Error("Happy Social updates stopped.");
         }
     };
 
@@ -183,6 +178,7 @@ export function happyAgentSocialStoreCreate(
             .then(
                 (response) => {
                     if (disposed) return;
+                    ++readRequest;
                     adopt(response.cloudSocial, true);
                 },
                 (error: unknown) => {

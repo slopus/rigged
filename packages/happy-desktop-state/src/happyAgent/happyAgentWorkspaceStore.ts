@@ -4603,6 +4603,13 @@ export function happyAgentWorkspaceStoreCreate(
         projectAdd() {
             if (disposed || projectAdd.pending) return;
             const host = deps.host;
+            if (host?.projectSource === "repository") {
+                if (projectClone?.submitting) return;
+                projectCloneGeneration += 1;
+                projectClone = { repository: "", submitting: false };
+                recompute();
+                return;
+            }
             if (!host) {
                 projectAdd = { pending: false, error: "This window cannot choose a folder." };
                 recompute();

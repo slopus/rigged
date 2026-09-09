@@ -11,6 +11,7 @@ import type {
 } from "@slopus/happy-agent-client";
 import type { HappyAgentDebugLogInput } from "../happyAgent/happyAgentDebugLogStore.js";
 import type { HappyAgentServiceTier } from "../happyAgentServiceTier.js";
+import type { HappyAgentSync } from "./happyAgentSync.js";
 
 export type { MutationId };
 
@@ -761,6 +762,8 @@ export interface ConnectHappyAgentOptions {
 }
 
 export interface HappyAgentConnection {
+    /** Shared authoritative transport input for this connection's feature stores. */
+    readonly sync: HappyAgentSync;
     compatibility: () => ServerCompatibility;
     /** Interrupts the managed update feed or startup wait so reconnection starts immediately. */
     retry: () => void;
@@ -824,11 +827,17 @@ export type ServerCompatibility =
     | {
           status: "checking";
           minimumSupportedProtocolVersion: number;
+          /** The oldest Happy Agent product version this build works with. */
+          minimumSupportedVersion: string;
       }
     | {
           status: "compatible" | "server_outdated";
           minimumSupportedProtocolVersion: number;
+          /** The oldest Happy Agent product version this build works with. */
+          minimumSupportedVersion: string;
           serverProtocolVersion: number;
+          /** The daemon's own product version, as its health report states it. */
+          serverVersion: string;
       };
 
 export type SessionEvent = HappyAgentEvent;

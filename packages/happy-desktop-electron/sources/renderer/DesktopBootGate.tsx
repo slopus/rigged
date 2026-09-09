@@ -151,12 +151,13 @@ export function DesktopBootGate(props: {
         props.onboarding.get,
     );
     if (booted) return <>{props.children}</>;
-    const ready = bootReady(runtime, directory.happyAgents, setup.onboarding !== undefined);
+    const local = directory.happyAgents.filter((entry) => entry.id === "local");
+    const ready = bootReady(runtime, local, setup.onboarding !== undefined);
     if (ready) booted = true;
     return (
         <SplashCover
             ready={ready}
-            steps={bootSteps(runtime, directory.happyAgents, setup.onboarding !== undefined)}
+            steps={bootSteps(runtime, local, setup.onboarding !== undefined)}
             stepsLabel="Startup progress"
         >
             {props.children}

@@ -141,6 +141,8 @@ export function happyAgentHistoryCreate(
     options: {
         readonly persistence?: HappyAgentHistoryPersistence;
         readonly initialEntries?: readonly HappyAgentRoute[];
+        /** Independent connection histories must not compete for the browser URL. */
+        readonly browser?: boolean;
     } = {},
 ): HappyAgentRouterHistory {
     const persistence = options.persistence;
@@ -148,7 +150,7 @@ export function happyAgentHistoryCreate(
     const asked = options.initialEntries?.length
         ? { entries: [...options.initialEntries], index: options.initialEntries.length - 1 }
         : undefined;
-    const opened = documentRoute(restored);
+    const opened = options.browser === false ? undefined : documentRoute(restored);
     const initial = asked ??
         (opened ? { entries: [opened], index: 0 } : undefined) ??
         restored ?? { entries: [HAPPY_AGENT_ROUTE_HOME], index: 0 };
@@ -159,7 +161,8 @@ export function happyAgentHistoryCreate(
 
     // The browser-side mirror. Each entry's browser twin is named by the key
     // the browser issued for it; an entry restored from persistence has none.
-    const nav = typeof window === "undefined" ? undefined : window.navigation;
+    const nav =
+        options.browser === false || typeof window === "undefined" ? undefined : window.navigation;
     let slots: (string | undefined)[] = entries.map(() => undefined);
     // Mirrors whose entries were archived away: walked over, never shown.
     const forgotten = new Set<string>();
@@ -197,7 +200,7 @@ export function happyAgentHistoryCreate(
     };
 
     const urlReplace = (path: string): void => {
-        if (typeof window === "undefined") return;
+        if (options.browser === false || typeof window === "undefined") return;
         urlWrite(() => window.history.replaceState(null, "", `#${path}`));
     };
 
@@ -585,7 +588,7 @@ export function happyAgentHistoryCreate(
             nav.removeEventListener("navigate", navigate);
             nav.removeEventListener("currententrychange", currentEntryChange);
         };
-    } else if (typeof window !== "undefined") {
+    } else if (options.browser !== false && typeof window !== "undefined") {
         // An address arriving in the URL after startup is the same request as
         // one sitting there at startup. Only an address from outside reaches
         // here, since `replaceState` raises no such event.

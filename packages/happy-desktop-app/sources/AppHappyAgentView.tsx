@@ -31,6 +31,7 @@ import type {
     HappyAgentModelSelection,
     HappyAgentNavigationOrderStore,
     HappyAgentSidebarCollapseStore,
+    HappyAgentSidebarVisibilityStore,
     HappyAgentPanelSnapshot,
     HappyAgentProjectAddSnapshot,
     HappyAgentPanelStore,
@@ -81,6 +82,7 @@ import {
     happyAgentVersionAtLeast,
     happyAgentNavigationOrderStoreNoop,
     happyAgentSidebarCollapseStoreNoop,
+    happyAgentSidebarVisibilityStoreNoop,
     happyAgentHumanMessageAuthor,
     happyAgentSessionGroupIdOf,
     happyAgentOwnerAuthor,
@@ -281,6 +283,8 @@ export interface AppHappyAgentEntry {
 }
 
 export interface AppHappyAgentSession {
+    readonly welcome?: import("happy-desktop-state").WelcomeStore;
+    readonly onboarding?: import("happy-desktop-state").HappyAgentOnboardingStore;
     readonly clock: HappyAgentClockStore;
     readonly connection: HappyAgentConnectionStore;
     /** This Happy Agent installation's Happy Social account. */
@@ -407,6 +411,13 @@ export interface AppHappyAgentViewProps {
      * open rather than offering a fold the next launch would forget.
      */
     sidebarCollapse?: HappyAgentSidebarCollapseStore;
+    /**
+     * Whether this window's left side — the sidebar and the connection rail
+     * beside it — is folded away. It belongs to the window, so every
+     * connection reads and writes the same fold. A host that supplies none
+     * leaves the fold to this view alone.
+     */
+    sidebarVisibility?: HappyAgentSidebarVisibilityStore;
     /**
      * Whether this window offers the features that are not finished yet. A host
      * that remembers no such choice supplies none, and they stay withheld.
@@ -1539,6 +1550,12 @@ export function AppHappyAgentView(props: AppHappyAgentViewProps) {
         sidebarCollapseStore.get,
         sidebarCollapseStore.get,
     );
+    const sidebarVisibilityStore = props.sidebarVisibility ?? happyAgentSidebarVisibilityStoreNoop;
+    const sidebarVisibility = useSyncExternalStore(
+        sidebarVisibilityStore.subscribe,
+        sidebarVisibilityStore.get,
+        sidebarVisibilityStore.get,
+    );
     // The palette is opened from anywhere in the window, so the key that opens
     // it is bound here rather than inside a workspace. Only whether it is open
     // is read here: what it holds is the palette's own business, and reading
@@ -1680,8 +1697,9 @@ export function AppHappyAgentView(props: AppHappyAgentViewProps) {
             // row becomes the window's drag lane. Full screen takes the lights
             // away, and the whole lockup heads the sidebar there — on the same
             // lane as the rows beneath it — rather than leaving the window's
-            // top-left corner empty.
-            brand={desktop ? windowState.fullScreen : true}
+            // top-left corner empty. Beside a connection rail the mark stands
+            // down again: the rail's tiles already identify the window.
+            brand={desktop ? windowState.fullScreen && !windowState.connectionRail : true}
             composeActive={props.createOpen === true}
             composeLabel="Create"
             footer={
@@ -2108,10 +2126,17 @@ export function AppHappyAgentView(props: AppHappyAgentViewProps) {
                 focus, width, collapsed state, or scroll position. */}
             <AppShell
                 sidebarCollapsible
+                {...(props.sidebarVisibility
+                    ? {
+                          sidebarCollapsed: sidebarVisibility.hidden,
+                          onSidebarCollapsedChange: sidebarVisibilityStore.sidebarHiddenUpdate,
+                      }
+                    : {})}
                 shortcutHints="interactive"
                 shortcutHintsSurface={paletteHints}
                 windowControls={desktop}
                 windowFullScreen={windowState.fullScreen}
+                connectionRail={windowState.connectionRail}
                 sidebar={sidebar}
             >
                 {routeContent()}
@@ -3233,9 +3258,11 @@ function HappyAgentWorkspaceSurface(props: HappyAgentWorkspaceSurfaceProps) {
             else {
                 // Files is permanent. Closing from that focused tab dismisses
                 // its pane and returns the keyboard to the selected main tab.
-                const shell = document.querySelector<HTMLElement>(
-                    '[data-happy-desktop-ui="app-shell"][data-embedded]',
-                );
+                const shell = [
+                    ...document.querySelectorAll<HTMLElement>(
+                        '[data-happy-desktop-ui="app-shell"][data-embedded]',
+                    ),
+                ].find((element) => element.getClientRects().length > 0);
                 const mainTab = shell?.querySelector<HTMLElement>(
                     '[data-happy-desktop-ui="app-shell-workspace"] [data-happy-desktop-ui="tab"][aria-selected="true"]',
                 );
@@ -4365,16 +4392,24 @@ function HappyAgentGroupComposer(props: {
 }) {
     const workspace = props.workspace;
     const draftMenus = props.draftMenus;
+    const modelsNotConfigured = draftMenus?.modelOptions.length === 0;
     return (
         <ConversationView
             agentAuthor={agentAuthor}
             composer={props.composer}
-            composerFocusOnType={props.focusOnType}
+            composerDisabled={modelsNotConfigured}
+            composerFocusOnType={props.focusOnType && !modelsNotConfigured}
             // Only the composer that claims stray typing takes the caret, so the
             // dock over an expanded panel cannot pull it out from under the one
             // the reader can see.
-            {...(props.focusOnType ? { composerFocusKey: props.groupId } : {})}
-            composerPlaceholder={composerPlaceholder(props.groupName)}
+            {...(props.focusOnType && !modelsNotConfigured
+                ? { composerFocusKey: props.groupId }
+                : {})}
+            composerPlaceholder={
+                modelsNotConfigured
+                    ? "Configure models to start messaging…"
+                    : composerPlaceholder(props.groupName)
+            }
             composerSubmitDisabled={props.unavailable !== undefined}
             entries={NO_ENTRIES}
             // The first message is what creates the session, so its model,
@@ -4399,6 +4434,7 @@ function HappyAgentGroupComposer(props: {
                     <ComposerFooterBar
                         leading={
                             <HappyAgentSessionControls
+                                disabled={modelsNotConfigured}
                                 fields={["permission", "tier"]}
                                 menuPlacement="above"
                                 variant="ghost"
@@ -4426,7 +4462,8 @@ function HappyAgentGroupComposer(props: {
             onComposerAttachmentsSelect={(files) => workspace.composerAttachmentsAdd(files)}
             onComposerFocusChange={(focused) => workspace.composerFocusUpdate(focused)}
             onComposerSend={() => {
-                if (props.happyAgentOnline()) workspace.composerTextSubmit();
+                if (!modelsNotConfigured && props.happyAgentOnline())
+                    workspace.composerTextSubmit();
             }}
             onComposerValueChange={(value) =>
                 reactFrameInputUpdate(workspace, () => workspace.composerTextUpdate(value))
@@ -4697,7 +4734,9 @@ function HappyAgentConversationSurface(props: {
      * visible and keep showing what the session actually runs, which is what a
      * reader looking at someone else's chat came to find out.
      */
-    const configurable = !props.readOnly && sendRefusal === undefined;
+    const modelsNotConfigured = conversation.menus?.modelOptions.length === 0;
+    const composerDisabled = props.readOnly || modelsNotConfigured;
+    const configurable = !composerDisabled && sendRefusal === undefined;
     const activeActivity = happyAgentActiveActivityCounts(conversation);
     const activityTotal = activeActivity.agents + activeActivity.terminals;
     return (
@@ -4714,15 +4753,15 @@ function HappyAgentConversationSurface(props: {
                 ) : undefined
             }
             composer={conversation.composer}
-            composerDisabled={props.readOnly}
+            composerDisabled={composerDisabled}
             composerSubmitDisabled={sendRefusal !== undefined}
-            composerFocusOnType={!props.readOnly && props.focusOnType}
+            composerFocusOnType={!composerDisabled && props.focusOnType}
             // The open conversation is what this composer writes into, so moving
             // to another one — or landing in the one a new workspace was made
             // with — puts the caret in the draft. A locked chat has no draft to
             // put it in, and only the composer claiming stray typing takes it,
             // so the dock over an expanded panel cannot steal it.
-            {...(!props.readOnly && props.focusOnType
+            {...(!composerDisabled && props.focusOnType
                 ? { composerFocusKey: conversation.conversationId }
                 : {})}
             // A locked chat says why in the words of whatever locked it: the
@@ -4731,7 +4770,9 @@ function HappyAgentConversationSurface(props: {
             composerPlaceholder={
                 props.readOnly
                     ? (props.readOnlyReason ?? composerPlaceholder(props.groupName))
-                    : composerPlaceholder(props.groupName)
+                    : modelsNotConfigured
+                      ? "Configure models to start messaging…"
+                      : composerPlaceholder(props.groupName)
             }
             conversationId={conversation.conversationId}
             entries={conversation.entries}
@@ -4832,7 +4873,7 @@ function HappyAgentConversationSurface(props: {
                     : undefined
             }
             onCommandInvoke={
-                props.unavailable === undefined
+                !modelsNotConfigured && props.unavailable === undefined
                     ? (commandId) => {
                           if (props.happyAgentOnline()) workspace.composerCommandInvoke(commandId);
                       }
@@ -4844,7 +4885,8 @@ function HappyAgentConversationSurface(props: {
             onComposerAttachmentsSelect={(files) => workspace.composerAttachmentsAdd(files)}
             onComposerFocusChange={(focused) => workspace.composerFocusUpdate(focused)}
             onComposerSend={() => {
-                if (props.happyAgentOnline()) workspace.composerTextSubmit();
+                if (!modelsNotConfigured && props.happyAgentOnline())
+                    workspace.composerTextSubmit();
             }}
             onComposerValueChange={(value) =>
                 reactFrameInputUpdate(workspace, () => workspace.composerTextUpdate(value))

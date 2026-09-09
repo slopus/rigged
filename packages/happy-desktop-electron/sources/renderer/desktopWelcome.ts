@@ -9,11 +9,12 @@ const WELCOME_KEY = "happy.welcome.v1";
  * no idea whether they have read it, and reconnecting must never introduce them
  * to Happy a second time.
  */
-export function desktopWelcomePersistence(): WelcomePersistence {
+export function desktopWelcomePersistence(id = "local"): WelcomePersistence {
+    const key = id === "local" ? WELCOME_KEY : `${WELCOME_KEY}:${id}`;
     return {
         read() {
             try {
-                const value = localStorage.getItem(WELCOME_KEY);
+                const value = localStorage.getItem(key);
                 return value ? (JSON.parse(value) as WelcomeDocument) : undefined;
             } catch {
                 return undefined;
@@ -21,7 +22,7 @@ export function desktopWelcomePersistence(): WelcomePersistence {
         },
         write(document) {
             try {
-                localStorage.setItem(WELCOME_KEY, JSON.stringify(document));
+                localStorage.setItem(key, JSON.stringify(document));
             } catch {
                 // A storage-denied renderer still lets this window past the
                 // welcome; it will simply offer it again next launch.

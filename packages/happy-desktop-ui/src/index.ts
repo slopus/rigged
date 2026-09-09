@@ -667,3 +667,5 @@ export {
     type HappyAgentUsageSettingsProps,
 } from "./pages/settings/HappyAgentUsageSettings";
 export { providerAccountName } from "./pages/settings/providerAccountName";
+export { ConnectionShell, type ConnectionShellItem } from "./ConnectionShell";
+export { ConnectionSurface } from "./ConnectionSurface";

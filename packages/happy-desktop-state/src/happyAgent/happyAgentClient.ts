@@ -629,13 +629,17 @@ export function happyAgentWorkspaceClientCreate(
         },
         happyIntegration() {
             if (disposed) throw new Error("The Happy Agent client is disposed.");
-            happyIntegrationStore ??= happyAgentIntegrationStoreCreate({ client: deps.client });
+            happyIntegrationStore ??= happyAgentIntegrationStoreCreate({
+                client: deps.client,
+                sync: deps.connection.sync,
+            });
             return happyIntegrationStore;
         },
         cloud() {
             if (disposed) throw new Error("The Happy Agent client is disposed.");
             cloudStore ??= happyAgentCloudStoreCreate({
                 client: deps.client,
+                sync: deps.connection.sync,
                 host: deps.cloudHost,
             });
             return cloudStore;
@@ -647,7 +651,10 @@ export function happyAgentWorkspaceClientCreate(
         },
         social() {
             if (disposed) throw new Error("The Happy Agent client is disposed.");
-            socialStore ??= happyAgentSocialStoreCreate({ client: deps.client });
+            socialStore ??= happyAgentSocialStoreCreate({
+                client: deps.client,
+                sync: deps.connection.sync,
+            });
             return socialStore;
         },
         teams() {
@@ -659,6 +666,7 @@ export function happyAgentWorkspaceClientCreate(
             if (disposed) throw new Error("The Happy Agent client is disposed.");
             cloudStore ??= happyAgentCloudStoreCreate({
                 client: deps.client,
+                sync: deps.connection.sync,
                 host: deps.cloudHost,
             });
             socialJoinStore ??= happyAgentSocialJoinStoreCreate({

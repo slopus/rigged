@@ -2,6 +2,8 @@ import type { HappyAgentClient, HappyIntegration } from "@slopus/happy-agent-cli
 import { createStore } from "zustand/vanilla";
 import type { UserError } from "../types.js";
 import { happyAgentUserError } from "./happyAgentSupport.js";
+import { happyAgentSyncRead } from "../happyAgentConnection/happyAgentSyncRead.js";
+import type { HappyAgentSync } from "../happyAgentConnection/happyAgentSync.js";
 
 export type HappyAgentIntegrationStatus =
     | "loading"
@@ -53,13 +55,13 @@ export interface HappyAgentIntegrationStore {
 }
 
 export interface HappyAgentIntegrationStoreDeps {
+    readonly sync: HappyAgentSync;
     readonly client: Pick<
         HappyAgentClient,
         | "cancelHappyIntegration"
         | "disconnectHappyIntegration"
-        | "getDesktopBootstrap"
+        | "getHappyIntegration"
         | "startHappyIntegration"
-        | "updates"
     >;
 }
 
@@ -74,8 +76,8 @@ const EMPTY: HappyAgentIntegrationSnapshot = {
  * Creates the settings projection of Happy Mobile's daemon-owned integration.
  *
  * The constructor opens nothing. The first subscriber reads one race-free
- * desktop bootstrap and follows its event journal cursor; the last subscriber
- * aborts both reads. Every server response is a complete replacement, so the
+ * shared bootstrap or a narrow integration read, then follows the connection's
+ * shared stream. Every server response is a complete replacement, so the
  * store never reconstructs connection state from event order.
  */
 export function happyAgentIntegrationStoreCreate(
@@ -115,42 +117,43 @@ export function happyAgentIntegrationStoreCreate(
     };
 
     const follow = async (active: AbortController): Promise<void> => {
-        for (;;) {
-            const bootstrap = await deps.client.getDesktopBootstrap({ signal: active.signal });
-            if (active.signal.aborted) return;
-            if (!bootstrap.happyIntegration) {
-                store.setState(
-                    {
-                        disconnecting: false,
-                        pairingCanceling: false,
-                        pairingStarting: false,
-                        status: "unavailable",
-                    },
-                    true,
-                );
-                return;
-            }
-            integrationAdopt(bootstrap.happyIntegration);
-
-            let reconcile = false;
-            for await (const update of deps.client.updates({
-                after: bootstrap.cursor,
-                signal: active.signal,
-            })) {
-                if (update.kind === "state_lost") {
-                    reconcile = true;
-                    break;
+        const integrationRead = () =>
+            happyAgentSyncRead(
+                active.signal,
+                () => deps.client.getHappyIntegration({ signal: active.signal }),
+                (error) => store.setState({ error: happyAgentUserError(error) }, false),
+            );
+        for await (const input of deps.sync.follow({
+            signal: active.signal,
+            events: ["happy.integration.updated"],
+        })) {
+            try {
+                if (input.kind === "error") throw input.error;
+                if (input.kind === "bootstrap" || input.kind === "reconcile") {
+                    const integration =
+                        input.kind === "bootstrap"
+                            ? input.bootstrap.happyIntegration
+                            : (await integrationRead()).integration;
+                    if (active.signal.aborted) return;
+                    if (input.kind === "bootstrap") version = undefined;
+                    if (!integration) {
+                        store.setState({ ...EMPTY, status: "unavailable" }, true);
+                        continue;
+                    }
+                    integrationAdopt(integration);
+                    continue;
                 }
-                if (update.kind === "daemon_started" && update.replaced) {
-                    reconcile = true;
-                    break;
+                const update = input.update;
+                if (update.kind === "connected" && store.getState().error) {
+                    const response = await integrationRead();
+                    if (!active.signal.aborted) integrationAdopt(response.integration);
                 }
                 if (update.kind === "event" && update.event.type === "happy.integration.updated")
                     integrationAdopt(update.event.payload.integration);
+            } catch (error) {
+                if (!active.signal.aborted)
+                    store.setState({ error: happyAgentUserError(error) }, false);
             }
-            if (active.signal.aborted) return;
-            if (!reconcile) throw new Error("Happy Mobile connection updates stopped.");
-            version = undefined;
         }
     };
 

@@ -60,6 +60,12 @@
     opacity: 0.48;
 }
 
+.happy-composer-model-control__trigger[data-empty] {
+    color: var(--text-secondary);
+    cursor: default;
+    opacity: 1;
+}
+
 .happy-composer-model-control__summary {
     display: flex;
     flex: 0 1 auto;
@@ -69,12 +75,12 @@
     white-space: nowrap;
 }
 
-.happy-composer-model-control__summary > :last-child,
+.happy-composer-model-control__effort,
 .happy-composer-model-control__row-value {
     color: var(--text-secondary);
 }
 
-.happy-composer-model-control__summary > :last-child::before {
+.happy-composer-model-control__effort::before {
     content: " ";
 }
 

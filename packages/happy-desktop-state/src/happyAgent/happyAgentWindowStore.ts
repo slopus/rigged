@@ -7,6 +7,13 @@
 export interface HappyAgentWindowSnapshot {
     /** The window fills the display and the native window controls are gone. */
     readonly fullScreen: boolean;
+    /**
+     * A connection rail stands between the window's left edge and this surface.
+     * The rail owns the top-left corner, so the surface neither clears a lane
+     * for the native controls nor heads itself with the product mark. It is
+     * independent of `fullScreen`, which keeps reporting the window itself.
+     */
+    readonly connectionRail: boolean;
 }
 
 export interface HappyAgentWindowStore {
@@ -14,7 +21,7 @@ export interface HappyAgentWindowStore {
     subscribe(listener: () => void): () => void;
 }
 
-const windowed: HappyAgentWindowSnapshot = { fullScreen: false };
+const windowed: HappyAgentWindowSnapshot = { fullScreen: false, connectionRail: false };
 
 /** Inert windowed chrome for Blueprint fixtures, tests, and the browser shell. */
 export const happyAgentWindowStoreNoop: HappyAgentWindowStore = {

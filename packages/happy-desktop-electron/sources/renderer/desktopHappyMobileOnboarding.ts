@@ -14,9 +14,11 @@ function documentParse(value: unknown): HappyMobileOnboardingDocument | undefine
 }
 
 /** Whether this app installation has permanently dismissed optional mobile pairing. */
-export function desktopHappyMobileOnboardingSkipped(): boolean {
+export function desktopHappyMobileOnboardingSkipped(id = "local"): boolean {
     try {
-        const value = localStorage.getItem(HAPPY_MOBILE_ONBOARDING_KEY);
+        const value = localStorage.getItem(
+            id === "local" ? HAPPY_MOBILE_ONBOARDING_KEY : `${HAPPY_MOBILE_ONBOARDING_KEY}:${id}`,
+        );
         return value ? documentParse(JSON.parse(value)) !== undefined : false;
     } catch {
         return false;
@@ -24,10 +26,10 @@ export function desktopHappyMobileOnboardingSkipped(): boolean {
 }
 
 /** Records the explicit Skip decision before onboarding advances. */
-export function desktopHappyMobileOnboardingSkip(): void {
+export function desktopHappyMobileOnboardingSkip(id = "local"): void {
     try {
         localStorage.setItem(
-            HAPPY_MOBILE_ONBOARDING_KEY,
+            id === "local" ? HAPPY_MOBILE_ONBOARDING_KEY : `${HAPPY_MOBILE_ONBOARDING_KEY}:${id}`,
             JSON.stringify({ skipped: true, version: 1 } satisfies HappyMobileOnboardingDocument),
         );
     } catch {

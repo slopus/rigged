@@ -536,6 +536,7 @@ export function AppHappyAgentSettingsView(props: AppHappyAgentSettingsViewProps)
             }
             windowControls={props.platform === "desktop"}
             windowFullScreen={windowState.fullScreen}
+            connectionRail={windowState.connectionRail}
         >
             {props.section === "mobile-access" ? (
                 <HappyAgentMobileSettings

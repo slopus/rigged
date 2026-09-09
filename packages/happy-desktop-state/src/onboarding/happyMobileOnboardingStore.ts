@@ -1,5 +1,7 @@
 import type { HappyAgentClient, HappyIntegration } from "@slopus/happy-agent-client";
 import { happyAgentUserError } from "../happyAgent/happyAgentSupport.js";
+import type { HappyAgentSync } from "../happyAgentConnection/happyAgentSync.js";
+import { happyAgentSyncRead } from "../happyAgentConnection/happyAgentSyncRead.js";
 
 export type HappyMobileOnboardingSnapshot =
     | { readonly status: "checking" }
@@ -33,9 +35,10 @@ export interface HappyMobileOnboardingStore {
 }
 
 export interface HappyMobileOnboardingStoreOptions {
+    readonly sync: HappyAgentSync;
     readonly client: Pick<
         HappyAgentClient,
-        "cancelHappyIntegration" | "getDesktopBootstrap" | "startHappyIntegration" | "updates"
+        "cancelHappyIntegration" | "getHappyIntegration" | "startHappyIntegration"
     >;
     readonly initialSkipped?: boolean;
     readonly onOutput?: (output: HappyMobileOnboardingOutput) => void;
@@ -59,8 +62,8 @@ function resolved(snapshot: HappyMobileOnboardingSnapshot): boolean {
  * and its realtime replacements.
  *
  * The constructor opens nothing. The first subscriber takes a race-free
- * desktop bootstrap and follows the event journal from its cursor; the last
- * subscriber aborts both reads immediately. Configured, disabled, and skipped
+ * shared bootstrap or a narrow integration read and follows the connection's
+ * shared journal; the last subscriber aborts its read immediately. Configured, disabled, and skipped
  * are terminal for onboarding, so they stop transport even while the screen
  * that follows remains mounted.
  */
@@ -82,7 +85,10 @@ export function happyMobileOnboardingStoreCreate(
         networkAbort = undefined;
     };
     const integrationAdopt = (integration: HappyIntegration): void => {
-        if (version !== undefined && version.localeCompare(integration.version) >= 0) return;
+        if (version !== undefined) {
+            const order = version.localeCompare(integration.version);
+            if (order > 0 || (order === 0 && snapshot.status !== "failed")) return;
+        }
         version = integration.version;
         if (integration.configured) {
             publish(CONFIGURED);
@@ -114,41 +120,61 @@ export function happyMobileOnboardingStoreCreate(
         }
     };
     const follow = async (abort: AbortController): Promise<void> => {
-        for (;;) {
-            const bootstrap = await options.client.getDesktopBootstrap({ signal: abort.signal });
-            if (abort.signal.aborted) return;
-            if (!bootstrap.happyIntegration) {
-                publish({
-                    message: "This Happy Agent does not support Happy Mobile pairing.",
-                    pending: false,
-                    status: "failed",
-                });
-                return;
-            }
-            integrationAdopt(bootstrap.happyIntegration);
-            if (abort.signal.aborted || resolved(snapshot)) return;
-
-            let reconcile = false;
-            for await (const update of options.client.updates({
-                after: bootstrap.cursor,
-                signal: abort.signal,
-            })) {
-                if (update.kind === "state_lost") {
-                    reconcile = true;
-                    break;
+        const integrationRead = () =>
+            happyAgentSyncRead(
+                abort.signal,
+                () => options.client.getHappyIntegration({ signal: abort.signal }),
+                (error) =>
+                    publish({
+                        message: `Happy could not read Happy Mobile setup. ${happyAgentUserError(error).message}`,
+                        pending: false,
+                        status: "failed",
+                    }),
+            );
+        for await (const input of options.sync.follow({
+            signal: abort.signal,
+            events: ["happy.integration.updated"],
+        })) {
+            try {
+                if (input.kind === "error") throw input.error;
+                if (
+                    input.kind === "bootstrap" ||
+                    input.kind === "reconcile" ||
+                    (input.kind === "update" &&
+                        input.update.kind === "connected" &&
+                        snapshot.status === "failed")
+                ) {
+                    const integration =
+                        input.kind === "bootstrap"
+                            ? input.bootstrap.happyIntegration
+                            : (await integrationRead()).integration;
+                    if (abort.signal.aborted) return;
+                    if (input.kind === "bootstrap") version = undefined;
+                    if (!integration) {
+                        publish({
+                            message: "This Happy Agent does not support Happy Mobile pairing.",
+                            pending: false,
+                            status: "failed",
+                        });
+                        continue;
+                    }
+                    integrationAdopt(integration);
+                    if (abort.signal.aborted || resolved(snapshot)) return;
+                    continue;
                 }
-                if (update.kind === "daemon_started" && update.replaced) {
-                    reconcile = true;
-                    break;
-                }
+                const update = input.update;
                 if (update.kind === "event" && update.event.type === "happy.integration.updated") {
                     integrationAdopt(update.event.payload.integration);
                     if (abort.signal.aborted || resolved(snapshot)) return;
                 }
+            } catch (error) {
+                if (!abort.signal.aborted)
+                    publish({
+                        message: `Happy could not read Happy Mobile setup. ${happyAgentUserError(error).message}`,
+                        pending: false,
+                        status: "failed",
+                    });
             }
-            if (abort.signal.aborted || resolved(snapshot)) return;
-            if (!reconcile) throw new Error("Happy Mobile pairing updates stopped.");
-            version = undefined;
         }
     };
     const networkEnsure = (): void => {

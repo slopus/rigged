@@ -162,8 +162,23 @@
     --happy-desktop-app-shell-chrome-inset: 84px;
 }
 
-.happy-desktop-app-shell[data-window-controls][data-window-full-screen] {
+.happy-desktop-app-shell[data-window-controls]:is(
+    [data-window-full-screen],
+    [data-connection-rail]
+) {
     --happy-desktop-app-shell-chrome-inset: 12px;
+}
+
+/* Beside a rail in a window the lights are still there, 20px of them past
+   the rail's 56px edge with the halo fading out behind them. A heading with
+   something at its start — the settings back control and title — would land
+   under the green light on the closed inset, so it begins 36px in instead:
+   past the green light and the halo's fade, on the lights' own line. */
+.happy-desktop-app-shell[data-window-controls][data-connection-rail]:not([data-window-full-screen])
+    .happy-desktop-app-shell__sidebar
+    > .happy-sidebar[data-back]
+    > .happy-sidebar__header {
+    padding-left: 36px;
 }
 
 /* Keep sidebar headings clear of the native traffic lights. The collapse
@@ -187,19 +202,48 @@
    row's glyph box starts at the body's 8px inset plus the row's own 10px
    padding, so the mark begins at that same 18px and its 20px box shares the
    rows' glyph lane; the 8px gap after it puts the wordmark on their label lane. */
-.happy-desktop-app-shell[data-window-controls][data-window-full-screen]
+.happy-desktop-app-shell[data-window-controls]:is([data-window-full-screen], [data-connection-rail])
     .happy-desktop-app-shell__sidebar
     > .happy-sidebar
     > .happy-sidebar__header {
     padding-left: 18px;
 }
 
-.happy-desktop-app-shell[data-window-controls][data-window-full-screen]
+.happy-desktop-app-shell[data-window-controls]:is([data-window-full-screen], [data-connection-rail])
     .happy-desktop-app-shell__sidebar
     > .happy-sidebar
     > .happy-sidebar__header
     .happy-sidebar__title-row {
     gap: 8px;
+}
+
+/* Beside a connection rail in full screen, a heading with nothing in it — the
+   product mark stands down there — has no traffic lights to hold a band for
+   either, so it folds away and the list starts at the top. In a window the
+   band stays: it is still the lights' line, and the list starts under it.
+   The collapse toggle then shares the Create row's line: the row is 32px
+   behind the body's 6px inset, so the 28px toggle hangs at 8px to centre on
+   it, and the row leaves the toggle's 40px lane (12px edge plus 28px box,
+   less the body's own 6px) clear. */
+.happy-desktop-app-shell[data-window-controls][data-connection-rail][data-window-full-screen]
+    .happy-desktop-app-shell__sidebar
+    > .happy-sidebar[data-heading-empty]
+    > .happy-sidebar__header {
+    display: none;
+}
+
+.happy-desktop-app-shell[data-window-controls][data-connection-rail][data-window-full-screen]
+    .happy-desktop-app-shell__sidebar:has(> .happy-sidebar[data-heading-empty])
+    > .happy-desktop-app-shell__sidebar-collapse {
+    top: 8px;
+}
+
+.happy-desktop-app-shell[data-window-controls][data-connection-rail][data-window-full-screen]
+    .happy-desktop-app-shell__sidebar
+    > .happy-sidebar[data-heading-empty]
+    .happy-sidebar__body-content
+    > .happy-sidebar__compose:first-child {
+    margin-right: 34px;
 }
 
 /* Same reservation on whichever strip heads the workspace once the sidebar is
@@ -227,7 +271,10 @@
 /* The lane held clear of the lights themselves. In full screen they are gone
    and the header keeps its own 16px inset, which is why only this half of the
    reservation is scoped away from it. */
-.happy-desktop-app-shell[data-window-controls]:not([data-window-full-screen])
+.happy-desktop-app-shell[data-window-controls]:not(
+        [data-window-full-screen],
+        [data-connection-rail]
+    )
     .happy-lightbox__header {
     padding-left: var(--happy-desktop-app-shell-chrome-inset);
 }

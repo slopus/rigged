@@ -48,6 +48,9 @@ function labelFor(choices: readonly ComposerModelChoice[], value: string) {
  */
 export function ComposerModelControl(props: ComposerModelControlProps) {
     const [panel, setPanel] = useState<Panel | null>(null);
+    const hasModels = props.models.length > 0;
+    // A removed catalog closes the picker; restoring it must not reopen an old panel.
+    if (!hasModels && panel !== null) setPanel(null);
     const root = useRef<HTMLDivElement>(null);
     // eslint-disable-next-line happy-react/no-layout-effect -- an open model panel owns document-level outside-pointer and Escape listeners that are attached after commit and completely removed when it closes
     useLayoutEffect(() => {
@@ -59,7 +62,7 @@ export function ComposerModelControl(props: ComposerModelControlProps) {
         document.addEventListener("pointerdown", outsidePointerDown, true);
         return () => document.removeEventListener("pointerdown", outsidePointerDown, true);
     }, [panel]);
-    const modelLabel = labelFor(props.models, props.model);
+    const modelLabel = hasModels ? labelFor(props.models, props.model) : "Models not configured";
     const effortLabel = labelFor(props.efforts, props.effort);
     const choicesFor = (next: "effort" | "model") =>
         next === "model" ? props.models : props.efforts;
@@ -139,22 +142,27 @@ export function ComposerModelControl(props: ComposerModelControlProps) {
             style={props.style}
         >
             <button
-                aria-expanded={panel !== null}
-                aria-haspopup="dialog"
-                aria-label={`Model: ${modelLabel}. Effort: ${effortLabel}.`}
+                aria-expanded={hasModels ? panel !== null : undefined}
+                aria-haspopup={hasModels ? "dialog" : undefined}
+                aria-label={
+                    hasModels ? `Model: ${modelLabel}. Effort: ${effortLabel}.` : modelLabel
+                }
                 className="happy-composer-model-control__trigger"
                 data-happy-desktop-ui="composer-model-control-trigger"
-                disabled={props.disabled}
+                data-empty={hasModels ? undefined : ""}
+                disabled={props.disabled || !hasModels}
                 onClick={() => setPanel((current) => (current === null ? "main" : null))}
                 type="button"
             >
                 <span className="happy-composer-model-control__summary">
                     <span>{modelLabel}</span>
-                    <span>{effortLabel}</span>
+                    {hasModels ? (
+                        <span className="happy-composer-model-control__effort">{effortLabel}</span>
+                    ) : null}
                 </span>
-                <Icon name="chevron-down" size={20} />
+                {hasModels ? <Icon name="chevron-down" size={20} /> : null}
             </button>
-            {panel === "main" || panel === "model" || panel === "effort" ? (
+            {hasModels && panel !== null ? (
                 <div
                     aria-label="Model configuration"
                     className="happy-composer-model-control__menu"

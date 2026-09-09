@@ -54,3 +54,4 @@ export {
 } from "./browserTerminalConnection";
 export { terminalDriverCreate } from "./terminalDriver";
 export { ghosttyEmulatorCreate, type TerminalEmulator } from "./ghosttyTerminal";
+export { happyAgentWelcomeSlides } from "./onboarding/happyAgentWelcomeSlides";

@@ -25,6 +25,8 @@ export type HappyAgentSettingsShellProps = {
     /** Native macOS window chrome, matching the workspace shell it replaces. */
     windowControls?: boolean;
     windowFullScreen?: boolean;
+    /** A connection rail holds the window's left edge; see `AppShell`. */
+    connectionRail?: boolean;
 };
 
 /**
@@ -42,6 +44,7 @@ export function HappyAgentSettingsShell(props: HappyAgentSettingsShellProps) {
         <AppShell
             windowControls={props.windowControls}
             windowFullScreen={props.windowFullScreen}
+            connectionRail={props.connectionRail}
             sidebar={
                 <Sidebar
                     activeItemId={props.activeCategoryId}

@@ -1,0 +1,140 @@
+.happy-connections {
+    display: flex;
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--surface);
+}
+.happy-connections__rail {
+    display: flex;
+    flex-direction: column;
+    /* Tiles start on the traffic lights' own x=14 and leave 6px on the trailing
+       side, the sidebar's own panel inset, so the sidebar content sits close
+       beside them: 14 + 36 + 6. */
+    flex: 0 0 56px;
+    min-height: 0;
+    box-sizing: border-box;
+    background: var(--rail-background);
+}
+.happy-connections__rail[data-window-controls] {
+    /* Matches the 40px hidden title bar the macOS traffic lights are centred in. */
+    padding-top: 40px;
+}
+/* The halo behind the traffic lights. The lights are 14px discs centred on
+   y=20 and spanning x=14…76, with the rail ending at 56, so the green one
+   would sit on the seam between the rail's tone and the sidebar's. A solid
+   capsule of the rail's tone stands under the whole cluster instead, with
+   2px of clear ground around every disc — 18px tall with a 9px radius (2 +
+   the 7px disc radius), from 2px before the red light to 2px after the green
+   — so nothing changes shade right against a light. The fade is the shape
+   itself blurred, so no edge anywhere can read as a line: a 4px blur keeps a
+   shape solid to about 8px inside its edge and is gone about 8px outside
+   it, so the shape is drawn 8px larger all round than the solid core it is
+   meant to leave, and its fade runs 16px out from that core. Where the
+   halo lies on the rail it is the rail's own colour and so invisible; the
+   tiles stand above its fade. */
+.happy-connections:has(> .happy-connections__rail[data-window-controls]) {
+    position: relative;
+}
+.happy-connections:has(> .happy-connections__rail[data-window-controls])::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    top: 3px;
+    left: 4px;
+    width: 82px;
+    height: 34px;
+    border-radius: 17px;
+    background: var(--rail-background);
+    filter: blur(4px);
+    pointer-events: none;
+}
+.happy-connections__rail > .happy-scroll-area {
+    /* The tile list takes the height between the title bar and the footer. */
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.happy-connections__footer {
+    /* Continues the sidebar footer's top separator across the rail. */
+    flex: none;
+    height: 40px;
+    box-sizing: border-box;
+    border-top: 1px solid var(--divider);
+}
+.happy-connections__items {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    /* Without a title bar above, the first 36px tile centres at 22px: the same
+       line as the sidebar's Create row (6px inset, 32px row) and its toggle. */
+    padding: 4px 6px 8px 14px;
+}
+.happy-connections__rail[data-window-controls] .happy-connections__items {
+    padding-top: 8px;
+}
+.happy-connections__item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    /* Above the halo's tail, so its last few percent never tint a tile. */
+    z-index: 2;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+}
+.happy-connections__item[data-local] {
+    background: var(--surface);
+}
+.happy-connections__item:hover {
+    color: var(--text);
+}
+/* The current connection carries a small dot beside its tile. */
+.happy-connections__item[aria-current="page"] {
+    color: var(--text);
+}
+.happy-connections__item[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: -10px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    transform: translateY(-50%);
+    background: var(--text);
+}
+.happy-connections__item:focus-visible {
+    outline: 2px solid var(--text-link);
+    outline-offset: 2px;
+}
+.happy-connections__body,
+.happy-connections__surface {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    position: relative;
+}
+.happy-connections__surface {
+    /* Fixed setup and modal chrome is contained by its connection, never the rail. */
+    contain: layout paint;
+    isolation: isolate;
+}
+.happy-connections__error {
+    padding: 8px 16px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}

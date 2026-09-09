@@ -1945,11 +1945,21 @@ export function Sidebar(props: SidebarProps) {
             y: event.clientY,
         });
     };
+    // A heading with nothing to say: no product mark, no title, no drill-down,
+    // nothing trailing. The band still stands where the window needs a drag
+    // lane; the shell decides whether it may fold away.
+    const headingEmpty =
+        !local.onBack &&
+        !local.brand &&
+        local.title === undefined &&
+        !local.subtitle &&
+        !local.headerTrailing;
     return (
         <nav
             {...rest}
             className={["happy-sidebar", local.className].filter(Boolean).join(" ")}
             data-back={local.onBack ? "" : undefined}
+            data-heading-empty={headingEmpty ? "" : undefined}
             data-happy-desktop-ui="sidebar"
             style={local.style}
         >

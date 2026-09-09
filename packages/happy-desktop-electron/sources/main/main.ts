@@ -235,6 +235,9 @@ const platformWindowChrome: Electron.BrowserWindowConstructorOptions =
           : {};
 
 nativeTheme.themeSource = "system";
+// Independent Happy Agent realtime streams share the loopback HTTP proxy.
+// Keep them from exhausting Chromium's per-host sockets and starving API requests.
+app.commandLine.appendSwitch("ignore-connections-limit", "127.0.0.1");
 app.commandLine.appendSwitch("disable-quic");
 app.commandLine.appendSwitch("force-webrtc-ip-handling-policy", "disable_non_proxied_udp");
 if (desktopDebugEnabled) {

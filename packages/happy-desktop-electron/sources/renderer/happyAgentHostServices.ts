@@ -101,7 +101,10 @@ async function postJson<Value>(baseUrl: string, path: string, body: unknown): Pr
  * Renderer access to the small set of services that truly belong to the
  * desktop host. Agent resources use `HappyAgentClient` directly.
  */
-export function happyAgentHostServicesCreate(baseUrl: string): HappyAgentHostServices {
+export function happyAgentHostServicesCreate(
+    baseUrl: string,
+    agentUrl = baseUrl,
+): HappyAgentHostServices {
     const capability = capabilityOf(baseUrl);
     return {
         openInTargetsRead: async (): Promise<HappyAgentOpenInTargets> => {
@@ -169,7 +172,7 @@ export function happyAgentHostServicesCreate(baseUrl: string): HappyAgentHostSer
         terminalConnect: (workspaceId, terminalId) =>
             new BrowserTerminalConnection(
                 terminalSocketUrl(
-                    baseUrl.replace(/\/$/u, ""),
+                    agentUrl.replace(/\/$/u, ""),
                     `/v0/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(terminalId)}/attach`,
                 ),
                 [

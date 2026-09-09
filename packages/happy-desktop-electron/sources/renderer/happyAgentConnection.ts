@@ -7,6 +7,10 @@ import {
     happyAgentClockStoreCreate,
     happyAgentDebugLogStoreCreate,
     happyAgentWorkspaceStoreCreate,
+    happyAgentOnboardingStoreCreate,
+    welcomeStoreCreate,
+    type WelcomeStore,
+    type HappyAgentOnboardingStore,
     HappyAgentApiError,
     type MutationRejectedDelta,
     type HappyAgentWorkspaceClient,
@@ -41,6 +45,11 @@ import {
 } from "happy-desktop-state";
 import { completionChimePlay } from "./completionChime";
 import { desktopViewPreferencesPersistence } from "./desktopViewPreferences";
+import { desktopWelcomePersistence } from "./desktopWelcome";
+import {
+    desktopHappyMobileOnboardingSkip,
+    desktopHappyMobileOnboardingSkipped,
+} from "./desktopHappyMobileOnboarding";
 import { happyAgentCatalogSourceCreate } from "./happyAgentCatalogSource";
 import { happyAgentHostServicesCreate } from "./happyAgentHostServices";
 import { happyAgentProfileSourceCreate } from "./happyAgentProfileSource";
@@ -86,6 +95,8 @@ function workspaceMemoryPersistence(happyAgentId: string): HappyAgentWorkspaceMe
 }
 
 export interface HappyAgentSession {
+    readonly welcome: WelcomeStore;
+    readonly onboarding: HappyAgentOnboardingStore;
     readonly connection: HappyAgentConnectionStore;
     readonly cloud: () => HappyAgentCloudStore;
     readonly cloudDevices: () => HappyAgentCloudDevicesStore;
@@ -122,6 +133,7 @@ export interface HappyAgentSessionDeps {
 }
 
 export interface HappyAgentConnectionHandle {
+    readonly sync: import("happy-desktop-state").HappyAgentSync;
     get(): HappyAgentSession | undefined;
     /**
      * Why this connection has nothing to hand over, when that is a failure. A
@@ -261,6 +273,8 @@ export function happyAgentConnectionOpen(input: {
      * the catalog, and the desktop-local host routes alike.
      */
     readonly happyAgentHttpUrl: string;
+    readonly client?: HappyAgentClient;
+    readonly hostServicesUrl?: string;
     /**
      * The window's appearance right now, read again for every terminal this
      * connection opens. A terminal is started in it and keeps it afterwards.
@@ -281,11 +295,12 @@ export function happyAgentConnectionOpen(input: {
         message: "Opening local Happy Agent connection",
         source: "connection",
     });
-    const directClient = new HappyAgentClient({
-        endpoint: input.happyAgentHttpUrl,
-        token: "happy-local-capability",
-    });
-    const profile = happyAgentProfileSourceCreate(directClient);
+    const directClient =
+        input.client ??
+        new HappyAgentClient({
+            endpoint: input.happyAgentHttpUrl,
+            token: "happy-local-capability",
+        });
     const mutationListeners = new Set<(rejection: MutationRejectedDelta) => void>();
     const agentConnection: HappyAgentConnection = connectHappyAgent({
         client: directClient,
@@ -304,8 +319,18 @@ export function happyAgentConnectionOpen(input: {
         },
         onTopLevelSessionFinished: () => completionChimePlay(),
     });
+    const profile = happyAgentProfileSourceCreate(directClient, agentConnection.sync);
     const catalogSource = happyAgentCatalogSourceCreate(agentConnection, input.happyAgentHttpUrl);
-    const hostServices = happyAgentHostServicesCreate(input.happyAgentHttpUrl);
+    const hostServices = happyAgentHostServicesCreate(
+        input.hostServicesUrl ?? input.happyAgentHttpUrl,
+        input.happyAgentHttpUrl,
+    );
+    const welcome = welcomeStoreCreate(desktopWelcomePersistence(input.happyAgentId));
+    const onboarding = happyAgentOnboardingStoreCreate(directClient, agentConnection.sync, {
+        setupActive: input.happyAgentId !== "local" && welcome.get().welcomeAcknowledged,
+        mobileSkipped: desktopHappyMobileOnboardingSkipped(input.happyAgentId),
+        onMobileSkip: () => desktopHappyMobileOnboardingSkip(input.happyAgentId),
+    });
     const client: HappyAgentWorkspaceClient = happyAgentWorkspaceClientCreate({
         client: directClient,
         cloudHost: input.cloudHost,
@@ -333,6 +358,7 @@ export function happyAgentConnectionOpen(input: {
     const socialJoinStore = client.socialJoin();
     const profileStore = client.profile();
     const accountKeepWarm = [
+        onboarding.subscribe(() => undefined),
         socialJoinStore.subscribe(() => undefined),
         ...(profileStore ? [profileStore.subscribe(() => undefined)] : []),
     ];
@@ -363,6 +389,8 @@ export function happyAgentConnectionOpen(input: {
                     source: "catalog",
                 });
                 session = {
+                    welcome,
+                    onboarding,
                     cloud: () => cloudStore,
                     cloudDevices: () => client.cloudDevices(),
                     social: () => client.social(),
@@ -378,7 +406,7 @@ export function happyAgentConnectionOpen(input: {
                     providers: client.providers(),
                     workspace: happyAgentWorkspaceStoreCreate(client, {
                         host: input.host,
-                        viewPreferences: desktopViewPreferencesPersistence(),
+                        viewPreferences: desktopViewPreferencesPersistence(input.happyAgentId),
                         output: (event) => {
                             switch (event.type) {
                                 case "conversationOpenRequested":
@@ -438,6 +466,7 @@ export function happyAgentConnectionOpen(input: {
 
     return {
         get: () => session,
+        sync: agentConnection.sync,
         failure: () => compatibilityFailure ?? (session ? undefined : catalogFailure),
         starting: () => !session && catalogStarting,
         dispose() {
@@ -456,6 +485,7 @@ export function happyAgentConnectionOpen(input: {
                 session = undefined;
             }
             for (const unsubscribe of accountKeepWarm) unsubscribe();
+            onboarding[Symbol.dispose]();
             client[Symbol.dispose]();
             mutationListeners.clear();
             agentConnection.close();

@@ -124,6 +124,9 @@
     --overlay-backdrop: rgb(15 15 15 / 0.75);
     --overlay-panel: rgb(0 0 0 / 0.48);
     --groupped-background: #f5f5f5;
+    /* The connection rail: one step darker than the grouped sidebar beside it,
+       so the two read as separate strips without a divider between them. */
+    --rail-background: #e3e3e6;
     --groupped-chevron: #49454f;
     --groupped-section-title: #49454f;
     --header-background: #ffffff;
@@ -336,6 +339,7 @@
         --overlay-backdrop: rgb(15 15 15 / 0.75);
         --overlay-panel: rgb(0 0 0 / 0.48);
         --groupped-background: #1e1e1e;
+        --rail-background: #141416;
         --groupped-chevron: #cac4d0;
         --groupped-section-title: #cac4d0;
         --header-background: #212121;
@@ -505,6 +509,7 @@
     --overlay-backdrop: rgb(15 15 15 / 0.75);
     --overlay-panel: rgb(0 0 0 / 0.48);
     --groupped-background: #1e1e1e;
+    --rail-background: #141416;
     --groupped-chevron: #cac4d0;
     --groupped-section-title: #cac4d0;
     --header-background: #212121;
