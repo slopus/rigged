@@ -111,12 +111,13 @@ const INSTALL_STEPS: readonly AgentInstallStep[] = [
 ];
 
 /**
- * The three parts of a restart worth telling apart, and the steps each covers.
+ * The four parts of a restart worth telling apart, and the step each covers.
  *
- * These are the three answers to "what is happening to my work": it is still
- * finishing, the agent is going away, and something is coming back. Reconnecting
- * belongs to the last of them — the agent is already up, and the window catching
- * up to it is not a stage anyone is waiting on separately.
+ * These are the answers to "what is happening to my work": it is still
+ * finishing, the agent is going away, the new one is coming up, and the window
+ * is catching up to it. Reconnecting is its own part because it is the one the
+ * window genuinely waits on after the agent is back — long enough to be worth a
+ * segment of its own rather than a change of heading.
  *
  * Named the way the titles are named. `drain` is the daemon's word for the first
  * of these and says nothing to whoever is watching it; what they are being told
@@ -129,7 +130,8 @@ const INSTALL_SECTIONS: readonly {
 }[] = [
     { id: "drain", label: "Finishing work", steps: ["draining"] },
     { id: "shutdown", label: "Shutting down", steps: ["stopping"] },
-    { id: "start", label: "Starting", steps: ["starting", "reconnecting"] },
+    { id: "start", label: "Starting", steps: ["starting"] },
+    { id: "reconnect", label: "Reconnecting", steps: ["reconnecting"] },
 ];
 
 /**
@@ -145,12 +147,12 @@ const INSTALL_SECTIONS: readonly {
  * hold work open and how many operations each one is holding, and this states
  * that. When it says nothing is waiting, the wait is over.
  *
- * The bar says which of the three parts of a restart is running: work finishing,
- * the agent going away, something coming back. Those are three different answers
- * to the only question anyone watching this has, and one undivided bar gives
- * none of them. Only the drain fills in proportion, against the most work it was
- * holding, because it is the only step with a quantity behind it; the other two
- * sweep rather than invent a position.
+ * The bar says which part of a restart is running: work finishing, the agent
+ * going away, the new one starting, the window reconnecting. Those are separate
+ * answers to the only question anyone watching this has, and one undivided bar
+ * gives none of them. Only the drain fills in proportion, against the most work
+ * it was holding, because it is the only step with a quantity behind it; the
+ * others sweep rather than invent a position.
  *
  * Every phase is one frame that never moves. The whole sequence runs on its own
  * in front of someone who cannot do anything about it, so the parts that change
@@ -225,7 +227,7 @@ export function AgentInstallScreen(props: AgentInstallScreenProps) {
 }
 
 /**
- * The restart as three segments: where it has got to, and how far into the one
+ * The restart as its segments: where it has got to, and how far into the one
  * part of it that can be counted.
  *
  * The bar is the sequence rather than a duration. Only the drain knows a
@@ -294,10 +296,12 @@ function installTitle(view: AgentInstallView): string {
             return "Finishing active work";
         case "stopping":
             return "Stopping Happy Agent";
+        // Reconnecting keeps the starting heading rather than replacing it: the
+        // reconnect is a segment on the bar, and swapping the title as the bar
+        // advances would say two different things about one continuous wait.
         case "starting":
-            return view.reason === "install" ? "Starting the new version" : "Starting Happy Agent";
         case "reconnecting":
-            return "Reconnecting";
+            return view.reason === "install" ? "Starting the new version" : "Starting Happy Agent";
         case "error":
             return view.reason === "install" ? "Install failed" : "Restart failed";
     }

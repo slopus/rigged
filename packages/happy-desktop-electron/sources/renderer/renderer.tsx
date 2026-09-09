@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type ReactNode } from "react";
+import { Activity, useSyncExternalStore, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import {
@@ -9,7 +9,6 @@ import {
     happyAgentRouterGroupOpen,
     happyAgentRouterGroupForget,
     happyAgentRouterCreate,
-    type AppHappyAgentDaemonInstall,
     type AppHappyAgentDaemonStore,
     type AppHappyAgentUpdate,
     type AppHappyAgentDebugStore,
@@ -102,6 +101,7 @@ import { desktopWelcomePersistence } from "./desktopWelcome";
 import { desktopNavigationOrderPersistence } from "./desktopNavigationOrder";
 import { desktopSidebarCollapsePersistence } from "./desktopSidebarCollapse";
 import { DesktopBootGate } from "./DesktopBootGate";
+import { desktopRestartStoreCreate, type DesktopRestartStore } from "./desktopRestartStore";
 import {
     DesktopMediaPreviewWindow,
     desktopMediaPreviewEscapeBind,
@@ -422,6 +422,8 @@ interface DesktopRendererProps {
      * the closed-inset arrangement while the connection rail owns the left edge.
      */
     surfaceWindowState: HappyAgentWindowStore;
+    /** The local agent's restart as the window shows it, held until it is connected again. */
+    restart: DesktopRestartStore;
 }
 
 /**
@@ -461,9 +463,22 @@ function DesktopScreens(props: DesktopRendererProps) {
         props.sidebarVisibility.get,
         props.sidebarVisibility.get,
     );
+    const restart = useSyncExternalStore(
+        props.restart.subscribe,
+        props.restart.get,
+        props.restart.get,
+    );
     const main = props.connectionUis.get(LOCAL_HAPPY_AGENT_ID);
     const surfaceWindowState = props.surfaceWindowState;
-    return (
+    // Every connection rides through the local daemon, so while it is being
+    // replaced nothing in this window is usable — the remotes on the rail no
+    // more than the local surface. The restart takes the whole window, rail
+    // included; the shell stays mounted but hidden so every surface keeps its
+    // state for the moment the daemon is back. The screen outlasts the main
+    // process's word for the restart: it stays until this window is connected
+    // again and the catalog is read, so nothing half-built is ever handed back.
+    const restarting = restart !== undefined;
+    const shell = (
         <ConnectionShell
             items={directory.happyAgents.map((entry) => ({
                 id: entry.id,
@@ -528,11 +543,20 @@ function DesktopScreens(props: DesktopRendererProps) {
                 })}
         </ConnectionShell>
     );
+    return (
+        <>
+            <Activity mode={restarting ? "hidden" : "visible"}>{shell}</Activity>
+            {restart ? (
+                <DesktopAgentRestartWindow
+                    daemon={props.daemon ?? unavailableDaemonStore}
+                    view={restart}
+                />
+            ) : null}
+        </>
+    );
 }
 
 function DesktopLocalScreens(props: DesktopRendererProps) {
-    const daemonStore = props.daemon ?? unavailableDaemonStore;
-    const daemon = useSyncExternalStore(daemonStore.subscribe, daemonStore.get, daemonStore.get);
     const snapshot = useSyncExternalStore(props.store.subscribe, props.store.get, props.store.get);
     const hostedUpdate = useSyncExternalStore(
         props.localWebUpdate.subscribe,
@@ -566,16 +590,9 @@ function DesktopLocalScreens(props: DesktopRendererProps) {
                 {content}
             </DesktopOnboardingGate>
         );
-    // A restart is not gated here. It is not a state this tree can be in: the
-    // tree is discarded for its duration and a new one is built afterwards, so
-    // the screen for it lives above the root render rather than inside it.
-    const restarting = daemon.install.phase !== "idle";
-    return (
-        <>
-            <ConnectionSurface active={!restarting}>{gated}</ConnectionSurface>
-            {restarting ? <DesktopAgentRestartWindow daemon={daemonStore} /> : null}
-        </>
-    );
+    // A restart is not gated here: it takes the whole window, rail included,
+    // so its screen lives in DesktopScreens above every connection surface.
+    return gated;
 }
 
 /**
@@ -647,55 +664,17 @@ function DesktopConnectionHeader(props: {
  * Only ever the local host. A Happy Agent on another machine is restarted by whoever
  * owns it and never touches this window.
  */
-function DesktopAgentRestartWindow(props: { daemon: AppHappyAgentDaemonStore }) {
-    const daemon = useSyncExternalStore(props.daemon.subscribe, props.daemon.get, props.daemon.get);
-    const view = agentInstallView(daemon.install);
-    // The supervisor mounts this only while a restart is running and replaces it
-    // the moment one is not, so this is unreachable in practice; rendering
-    // nothing is the honest answer for the frame that could sit between the two.
-    if (!view) return null;
+function DesktopAgentRestartWindow(props: {
+    daemon: AppHappyAgentDaemonStore;
+    view: AgentInstallView;
+}) {
     return (
         <AgentInstallScreen
             onDismiss={props.daemon.daemonInstallDismiss}
             onKill={props.daemon.daemonInstallKill}
-            view={view}
+            view={props.view}
         />
     );
-}
-
-/** The restart as the screen takes it, or nothing while none is running. */
-function agentInstallView(install: AppHappyAgentDaemonInstall): AgentInstallView | undefined {
-    switch (install.phase) {
-        case "idle":
-            return undefined;
-        case "draining":
-            return {
-                killable: install.killable,
-                kind: "draining",
-                reason: install.reason,
-                version: install.version,
-                waitingFor: install.waitingFor,
-                waitingPeak: install.waitingPeak,
-            };
-        case "stopping":
-            return {
-                killed: install.killed,
-                kind: "stopping",
-                reason: install.reason,
-                version: install.version,
-            };
-        case "starting":
-        case "reconnecting":
-            return { kind: install.phase, reason: install.reason, version: install.version };
-        case "error":
-            return {
-                failedAt: install.failedAt,
-                kind: "error",
-                message: install.message,
-                reason: install.reason,
-                version: install.version,
-            };
-    }
 }
 
 /**
@@ -1112,6 +1091,12 @@ if (mediaPreviewBridge) {
             sidebarVisibility,
             happyAgents,
         });
+        // The restart screen outlives the main process's report of the restart
+        // until this window has reconnected and read the catalog again.
+        const restart = desktopRestartStoreCreate({
+            daemon: daemon ?? unavailableDaemonStore,
+            happyAgents,
+        });
         function activeRouter(): HappyAgentRouter {
             return (
                 connectionUis.get(happyAgents.get().activeHappyAgentId ?? LOCAL_HAPPY_AGENT_ID)
@@ -1226,6 +1211,7 @@ if (mediaPreviewBridge) {
                         welcome={welcome}
                         windowState={windowState}
                         surfaceWindowState={surfaceWindowState}
+                        restart={restart}
                     />
                 </CodeHighlightWorkers>
             </DesktopAppearance>,
